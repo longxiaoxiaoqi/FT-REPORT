@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>FT 数据分析工作台</title>
+  <link rel="stylesheet" href="styles.css?v=1.37.0">
+  <script src="ft-core.js?v=1.37.0" defer></script>
+  <script src="sevenzip-loader.js?v=1.21.0" defer></script>
+  <script src="app.js?v=1.37.0" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">FINAL TEST ANALYTICS</p>
+      <h1>FT 数据分析工作台</h1>
+      <p class="subtitle">现已支持联动 QT8100 / QT8600、翌立科 ETS8000E、铭剑 E6400 测试平台数据，快速定位 Fail 项并评估 Pass 数据稳定性。数据只在本机浏览器中处理。</p>
+    </div>
+    <button id="themeToggle" class="icon-button" type="button" aria-label="切换深浅色主题">◐</button>
+  </header>
+
+  <main>
+    <section id="dropZone" class="drop-zone" aria-label="FT 数据文件导入区">
+      <input id="fileInput" type="file" accept=".csv,.zip,.7z,.rar,text/csv,application/zip,application/x-7z-compressed,application/vnd.rar,application/x-rar-compressed" multiple hidden>
+      <div class="drop-icon" aria-hidden="true">DATA</div>
+      <div>
+        <h2>将 CSV、ZIP、7z 或 RAR 压缩包拖到这里</h2>
+      </div>
+      <button id="browseButton" class="primary-button" type="button">选择 CSV / ZIP / 7z / RAR</button>
+    </section>
+
+    <div id="message" class="message" role="status" aria-live="polite"></div>
+
+    <section id="workspace" class="workspace" hidden>
+      <div class="toolbar">
+        <label>
+          <span>分析范围</span>
+          <select id="fileFilter">
+            <option value="all">全部明细 CSV 汇总</option>
+          </select>
+        </label>
+        <div class="toolbar-actions">
+          <button id="exportButton" class="secondary-button" type="button">导出分析结果</button>
+          <button id="addFilesButton" class="secondary-button" type="button">继续添加</button>
+          <button id="clearButton" class="text-button danger" type="button">清空</button>
+        </div>
+      </div>
+
+      <nav class="tabs" aria-label="分析视图">
+        <button class="tab is-active" type="button" data-tab="overview" aria-selected="true">总览</button>
+        <button class="tab" type="button" data-tab="distribution" aria-selected="false">Fail 分布</button>
+        <button class="tab" type="button" data-tab="stability" aria-selected="false">Pass 稳定性</button>
+        <button class="tab" type="button" data-tab="details" aria-selected="false">Fail 明细</button>
+        <button class="tab" type="button" data-tab="files" aria-selected="false">文件对比</button>
+        <button class="tab" type="button" data-tab="release" aria-selected="false">更新日志</button>
+      </nav>
+
+      <section id="overviewPanel" class="tab-panel">
+        <div id="summaryCards" class="summary-grid"></div>
+
+        <article id="summaryReportPanel" class="panel summary-report-panel" hidden>
+          <div class="panel-header responsive-header">
+            <div>
+              <h2>Summary 汇总报告</h2>
+              <p id="summaryReportHint"></p>
+            </div>
+            <span id="summaryReportStatus" class="badge unknown">内部校验</span>
+          </div>
+          <div id="summaryReportMetrics" class="metric-strip summary-report-metrics"></div>
+          <div class="summary-report-section">
+            <h3>报告信息</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>内部校验</th>
+                    <th>Summary 文件</th>
+                    <th>Total</th>
+                    <th>Pass</th>
+                    <th>Fail</th>
+                    <th>良率</th>
+                    <th>测试时间</th>
+                    <th>理论 UPH</th>
+                    <th>理论日产出</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryReportTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="summary-report-section">
+            <h3>Summary SBin / HBin</h3>
+            <div class="table-wrap summary-fail-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SBin</th>
+                    <th>HBin</th>
+                    <th>Bin 描述</th>
+                    <th>数量</th>
+                    <th>批次占比</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryBinTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="summary-report-section">
+            <h3>Summary FailCount</h3>
+            <div class="table-wrap summary-fail-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>排名</th>
+                    <th>Fail 项</th>
+                    <th>数量</th>
+                    <th>Fail 占比</th>
+                    <th>批次占比</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryFailTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+
+        <div class="two-column">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Fail 归因 Pareto</h2>
+                <p>按 Soft Bin 对应测试项统计，点击柱条可查看明细</p>
+              </div>
+            </div>
+            <div class="chart-wrap chart-tall">
+              <canvas id="paretoChart" role="img" aria-label="Fail 项 Pareto 图"></canvas>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>良率随测试顺序变化</h2>
+                <p id="yieldTrendHint">按连续测试记录分段观察</p>
+              </div>
+            </div>
+            <div class="chart-wrap chart-tall">
+              <canvas id="yieldChart" role="img" aria-label="良率趋势图"></canvas>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>主要 Fail 项</h2>
+              <p>“偏低/偏高”依据实测值与 CSV 中上下限判断</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>排名</th>
+                  <th>Fail 测试项</th>
+                  <th>数量</th>
+                  <th>Fail 占比</th>
+                  <th>总测试占比</th>
+                  <th>偏低</th>
+                  <th>偏高</th>
+                  <th>无法判定方向</th>
+                </tr>
+              </thead>
+              <tbody id="failTableBody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="distributionPanel" class="tab-panel" hidden>
+        <div class="distribution-layout">
+          <article class="panel distribution-list-panel">
+            <div class="panel-header responsive-header">
+              <div>
+                <h2>Fail 测试项</h2>
+                <p>点击项目查看实测值与超限分布</p>
+              </div>
+              <label class="inline-field distribution-test-picker">
+                <span>测试项</span>
+                <div class="distribution-test-control">
+                  <button id="distributionTestButton" class="distribution-test-button" type="button" aria-haspopup="listbox" aria-expanded="false">选择测试项</button>
+                  <div id="distributionTestMenu" class="distribution-test-menu" role="listbox" hidden></div>
+                </div>
+              </label>
+            </div>
+            <div class="table-wrap distribution-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fail 测试项</th>
+                    <th title="数量及其占当前分析范围总测试数的比例">Fail / 批次</th>
+                    <th title="数量及其占当前 Fail 项的比例">偏低 / %</th>
+                    <th title="数量及其占当前 Fail 项的比例">偏高 / %</th>
+                  </tr>
+                </thead>
+                <tbody id="distributionFailTableBody"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <div class="distribution-chart-column">
+            <article class="panel">
+              <div class="panel-header responsive-header">
+                <div>
+                  <h2 id="distributionTitle">Fail 数据分布</h2>
+                  <p id="distributionHint">选择左侧 Fail 项开始分析</p>
+                </div>
+                <button id="distributionDetailButton" class="secondary-button" type="button">查看 Fail 明细</button>
+              </div>
+              <div class="distribution-insights">
+                <section class="original-statistics">
+                  <div class="insight-heading"><span class="insight-kicker">原始数据</span><strong>测试统计</strong></div>
+                  <div id="distributionStats" class="metric-strip"></div>
+                </section>
+              <div id="limitSimulationPanel" class="limit-simulator">
+                <div class="limit-simulator-header">
+                  <div>
+                    <strong>规格与良率模拟</strong>
+                    <p id="limitSimulationNote">拖动画布中的 LSL / USL 虚线，或输入精确数值</p>
+                  </div>
+                  <div class="limit-inputs">
+                    <label>
+                      <span>LSL</span>
+                      <input id="simulatedLowerInput" type="number" step="any" inputmode="decimal">
+                    </label>
+                    <label>
+                      <span>USL</span>
+                      <input id="simulatedUpperInput" type="number" step="any" inputmode="decimal">
+                    </label>
+                    <button id="resetLimitsButton" class="secondary-button" type="button">恢复原规格</button>
+                  </div>
+                </div>
+                <div id="yieldSimulation" class="yield-simulation"></div>
+              </div>
+              </div>
+              <div class="chart-legend" aria-label="图例">
+                <span><i class="legend-dot within"></i>规格内</span>
+                <span><i class="legend-dot out"></i>超限</span>
+                <span><i class="legend-line limit"></i>可拖动规格限</span>
+                <button id="rangeModeButton" class="range-mode-button" type="button">显示全部范围</button>
+              </div>
+              <div class="chart-wrap distribution-sequence-chart">
+                <canvas id="failSequenceChart" role="img" aria-label="Fail 项实测值随测试顺序分布图"></canvas>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>数值直方分布</h2>
+                  <p>红色柱段为低于下限或高于上限的样本</p>
+                </div>
+              </div>
+              <div class="chart-wrap distribution-histogram-chart">
+                <canvas id="failHistogramChart" role="img" aria-label="Fail 项实测值直方分布图"></canvas>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="stabilityPanel" class="tab-panel" hidden>
+        <article class="panel">
+          <div class="panel-header responsive-header">
+            <div>
+              <h2>Pass 参数趋势</h2>
+              <p>仅使用 SBIN=Pass 的记录，虚线为规格上下限</p>
+            </div>
+            <label class="inline-field">
+              <span>测试项</span>
+              <select id="testItemSelect"></select>
+            </label>
+          </div>
+          <div id="selectedTestStats" class="metric-strip"></div>
+          <div class="chart-wrap chart-wide">
+            <canvas id="parameterChart" role="img" aria-label="Pass 参数趋势图"></canvas>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header responsive-header">
+            <div>
+              <h2>制程能力与稳定性</h2>
+              <p>Ppk ≥ 1.33 为稳定，1.00–1.33 建议关注，低于 1.00 为风险；需结合量测系统与工程规范判断</p>
+            </div>
+            <label class="inline-field search-field">
+              <span>筛选测试项</span>
+              <input id="stabilitySearch" type="search" placeholder="例如 LOSS_RF5">
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>测试项</th>
+                  <th>状态</th>
+                  <th>Pass 样本</th>
+                  <th>均值</th>
+                  <th>标准差</th>
+                  <th>Ppk</th>
+                  <th>6σ/规格宽度</th>
+                  <th>中心偏移</th>
+                  <th>规格</th>
+                </tr>
+              </thead>
+              <tbody id="stabilityTableBody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="detailsPanel" class="tab-panel" hidden>
+        <article class="panel">
+          <div class="panel-header responsive-header">
+            <div>
+              <h2>Fail 记录明细</h2>
+              <p id="failDetailCount"></p>
+            </div>
+            <div class="detail-filters">
+              <label class="inline-field">
+                <span>Fail 项</span>
+                <select id="failReasonFilter">
+                  <option value="all">全部 Fail 项</option>
+                </select>
+              </label>
+              <label class="inline-field search-field">
+                <span>搜索</span>
+                <input id="detailSearch" type="search" placeholder="序号 / 文件 / Site">
+              </label>
+            </div>
+          </div>
+          <div class="table-wrap detail-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>文件/阶段</th>
+                  <th>Serial</th>
+                  <th>Site</th>
+                  <th>HBIN</th>
+                  <th>SBIN</th>
+                  <th>Fail 测试项</th>
+                  <th>实测值</th>
+                  <th>规格范围</th>
+                  <th>判定</th>
+                  <th>测试时间</th>
+                </tr>
+              </thead>
+              <tbody id="detailTableBody"></tbody>
+            </table>
+          </div>
+          <div id="detailPagination" class="pagination"></div>
+        </article>
+      </section>
+
+      <section id="filesPanel" class="tab-panel" hidden>
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>文件与阶段对比</h2>
+              <p>按文件名末尾时间排序；名称中含 RT 的文件标记为复测。点击明细 CSV 可进入对应 Fail 分布。</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>阶段</th>
+                  <th>类型</th>
+                  <th>文件名时间</th>
+                  <th>格式</th>
+                  <th>文件</th>
+                  <th>Device</th>
+                  <th>Lot</th>
+                  <th>记录数</th>
+                  <th>Pass</th>
+                  <th>Fail</th>
+                  <th>良率</th>
+                  <th>首要 Fail 项</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="fileTableBody"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>良率对比</h2>
+              <p>用于快速比较 FT、复测或不同批次</p>
+            </div>
+          </div>
+          <div class="chart-wrap chart-medium">
+            <canvas id="fileYieldChart" role="img" aria-label="各文件良率对比图"></canvas>
+          </div>
+        </article>
+      </section>
+
+      <section id="releasePanel" class="tab-panel" hidden>
+        <article class="panel release-log-panel">
+          <div class="panel-header">
+            <div>
+              <h2>版本说明</h2>
+              <p>记录每次功能更新与优化；后续版本将持续追加在这里</p>
+            </div>
+            <span class="badge pass">持续更新</span>
+          </div>
+          <div id="releaseLog" class="release-timeline"></div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <span>本地离线分析 · 不上传测试数据</span>
+    <span id="versionText">v1.37</span>
+  </footer>
+</body>
+</html>

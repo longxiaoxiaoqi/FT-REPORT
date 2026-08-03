@@ -1,0 +1,11 @@
+# Operating-system and editor files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+
+# Locally generated analysis exports and scratch files
+analysis_output/
+output/
+outputs/
+tmp/
