@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.37",
+      version: "v1.38",
       current: true,
+      title: "Fail 分布连续数据条落地",
+      changes: [
+        "按确认的方案 2 将原始统计与良率模拟次级指标改为连续数据条，以细分隔线替代独立圆角卡片。",
+        "取消双栏面板强制最小高度并压缩标题区，让下方分布图在标准视图中更早出现。",
+        "扩大高分辨率屏幕下的工作区宽度，长数值允许完整换行，并为规格线标签增加不透明描边底板。"
+      ],
+    },
+    {
+      version: "v1.37",
+      current: false,
       title: "Fail 分布统一数据条布局",
       changes: [
         "原始测试统计与规格良率模拟统一为两张主指标卡加六项三列数据条，固定卡片高度、间距与文字层级。",
@@ -1649,10 +1659,29 @@
       ctx.setLineDash([7, 5]);
       ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(margin.left + plotW, y); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = theme.danger;
-      ctx.textAlign = "right";
-      ctx.fillText(`${label} ${formatNumber(value)}`, margin.left + plotW - 4, y - 6);
+      drawChartPill(ctx, `${label} ${formatNumber(value)}`, margin.left + plotW - 4, y - 7, theme, "right");
     });
+  }
+
+  function drawChartPill(ctx, text, anchorX, baselineY, theme, align = "right") {
+    const horizontalPadding = 6;
+    const height = 20;
+    const width = Math.ceil(ctx.measureText(text).width) + horizontalPadding * 2;
+    const left = align === "center" ? anchorX - width / 2 : anchorX - width;
+    const top = baselineY - 14;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.fillStyle = theme.surface;
+    ctx.strokeStyle = theme.danger;
+    ctx.lineWidth = 1;
+    roundRect(ctx, left, top, width, height, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = theme.danger;
+    ctx.textAlign = align === "center" ? "center" : "right";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(text, align === "center" ? anchorX : anchorX - horizontalPadding, baselineY);
+    ctx.restore();
   }
 
   function drawFailHistogramChart(result, limits) {
@@ -1711,9 +1740,7 @@
         ctx.setLineDash([7, 5]);
         ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = theme.danger;
-        ctx.textAlign = "center";
-        ctx.fillText(`${label} ${formatNumber(value)}`, x, margin.top - 7);
+        drawChartPill(ctx, `${label} ${formatNumber(value)}`, x, margin.top - 7, theme, "center");
       });
     }
 
