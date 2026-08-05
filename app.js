@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.38",
+      version: "v1.39",
       current: true,
+      title: "Pareto 联动单项分析卡",
+      changes: [
+        "用 Pareto 联动的单项分析卡替换总览底部 Fail 长表，集中展示 Fail 构成、批次影响与偏低/偏高方向。",
+        "点击 Pareto 柱仅切换当前分析项；支持按排名查看上一项/下一项，并可直达对应超限分布或 Fail 明细。",
+        "合并既有 Fail 分布布局优化：统一统计与模拟区层级、压缩标准视图高度，并改善视窗外超限点与规格标签显示。"
+      ],
+    },
+    {
+      version: "v1.38",
+      current: false,
       title: "Fail 分布连续数据条落地",
       changes: [
         "按确认的方案 2 将原始统计与良率模拟次级指标改为连续数据条，以细分隔线替代独立圆角卡片。",
@@ -220,6 +230,7 @@
     summaryAggregate: null,
     activeTab: "overview",
     selectedTest: "",
+    selectedOverviewFailReason: "",
     selectedFailReason: "all",
     selectedDistributionReason: "",
     distributionLimits: new Map(),
@@ -238,7 +249,7 @@
   const ids = [
     "dropZone", "fileInput", "browseButton", "message", "workspace", "fileFilter",
     "exportButton", "addFilesButton", "clearButton", "summaryCards", "paretoChart",
-    "yieldChart", "yieldTrendHint", "failTableBody", "testItemSelect", "selectedTestStats",
+    "yieldChart", "yieldTrendHint", "failFocusContent", "testItemSelect", "selectedTestStats",
     "parameterChart", "stabilitySearch", "stabilityTableBody", "failReasonFilter",
     "detailSearch", "detailTableBody", "failDetailCount", "detailPagination", "fileTableBody",
     "fileYieldChart", "themeToggle", "distributionTestButton", "distributionTestMenu", "distributionFailTableBody",
@@ -283,6 +294,7 @@
 
     el.fileFilter.addEventListener("change", () => {
       state.filterId = el.fileFilter.value;
+      state.selectedOverviewFailReason = "";
       state.selectedFailReason = "all";
       state.selectedDistributionReason = "";
       state.distributionLimits.clear();
@@ -326,9 +338,14 @@
       button.addEventListener("click", () => switchTab(button.dataset.tab));
     });
 
-    el.failTableBody.addEventListener("click", (event) => {
-      const row = event.target.closest("tr[data-reason]");
-      if (row) openFailReason(row.dataset.reason);
+    el.failFocusContent.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-fail-focus-action]");
+      if (!button || button.disabled) return;
+      const reason = state.selectedOverviewFailReason;
+      if (button.dataset.failFocusAction === "distribution") openFailDistribution(reason);
+      if (button.dataset.failFocusAction === "details") openFailDetails(reason);
+      if (button.dataset.failFocusAction === "previous") moveOverviewFailSelection(-1);
+      if (button.dataset.failFocusAction === "next") moveOverviewFailSelection(1);
     });
     el.stabilityTableBody.addEventListener("click", (event) => {
       const row = event.target.closest("tr[data-test]");
@@ -483,6 +500,7 @@
       state.files = Core.sortFilesChronologically(state.files);
       state.summaryReports = Core.sortFilesChronologically(state.summaryReports);
       state.filterId = "all";
+      state.selectedOverviewFailReason = "";
       state.selectedFailReason = "all";
       state.selectedDistributionReason = "";
       state.distributionLimits.clear();
@@ -749,21 +767,10 @@
     const a = state.analysis;
     const failStats = overviewFailStats();
     const summaryOnly = !a.total && failStats.some((item) => item.source === "summary");
-    if (!failStats.length) {
-      el.failTableBody.innerHTML = `<tr><td colspan="8" class="empty-state">当前范围没有 Fail 记录</td></tr>`;
-    } else {
-      el.failTableBody.innerHTML = failStats.map((item, index) => `
-        <tr class="${summaryOnly ? "" : "clickable-row"}"${summaryOnly ? "" : ` data-reason="${escapeHtml(item.reason)}"`}>
-          <td>${index + 1}</td>
-          <td><strong>${escapeHtml(item.reason)}</strong></td>
-          <td>${formatInteger(item.count)}</td>
-          <td>${formatPercent(item.failShare)}</td>
-          <td>${formatPercent(item.totalShare)}</td>
-          <td>${summaryOnly ? "—" : formatInteger(item.low)}</td>
-          <td>${summaryOnly ? "—" : formatInteger(item.high)}</td>
-          <td>${summaryOnly ? "Summary 无方向数据" : formatInteger(item.unknown + item.within)}</td>
-        </tr>`).join("");
+    if (!failStats.some((item) => item.reason === state.selectedOverviewFailReason)) {
+      state.selectedOverviewFailReason = failStats[0]?.reason || "";
     }
+    renderFailFocusCard(failStats, summaryOnly);
 
     el.failReasonFilter.innerHTML = `<option value="all">全部 Fail 项</option>` + a.failStats.map((item) => {
       return `<option value="${escapeHtml(item.reason)}">${escapeHtml(item.reason)}（${item.count}）</option>`;
@@ -776,6 +783,102 @@
       : summaryOnly
         ? "Summary 不含逐颗测试顺序"
         : "没有可用记录";
+  }
+
+  function renderFailFocusCard(failStats = overviewFailStats(), summaryOnly = false) {
+    if (!failStats.length) {
+      el.failFocusContent.innerHTML = `<div class="empty-state fail-focus-empty">当前范围没有 Fail 记录</div>`;
+      return;
+    }
+
+    const index = Math.max(0, failStats.findIndex((item) => item.reason === state.selectedOverviewFailReason));
+    const item = failStats[index];
+    const totalFail = state.analysis?.total
+      ? state.analysis.fail
+      : state.summaryAggregate?.fail || failStats.reduce((sum, current) => sum + current.count, 0);
+    const totalRecords = state.analysis?.total || state.summaryAggregate?.total || 0;
+    const low = Number(item.low) || 0;
+    const high = Number(item.high) || 0;
+    const unknown = (Number(item.unknown) || 0) + (Number(item.within) || 0);
+    const directionTotal = low + high + unknown;
+    const lowShare = directionTotal ? low / directionTotal : 0;
+    const highShare = directionTotal ? high / directionTotal : 0;
+    const unknownShare = directionTotal ? unknown / directionTotal : 0;
+    const detailAvailable = Boolean(state.analysis?.selectedFiles?.length) && !summaryOnly;
+    const rankLabel = index === 0 ? "首要原因" : index < 3 ? "主要原因" : `第 ${index + 1} 项`;
+    const failShare = Number(item.failShare) || 0;
+    const totalShare = Number(item.totalShare) || 0;
+
+    el.failFocusContent.innerHTML = `
+      <div class="fail-focus-toolbar">
+        <div class="fail-focus-selection">
+          <span class="fail-focus-rank">#${index + 1} · ${rankLabel}</span>
+          <strong>${escapeHtml(item.reason)}</strong>
+          <span>${formatInteger(item.count)} 次 Fail</span>
+        </div>
+        <div class="fail-focus-navigation" aria-label="Pareto 排名切换">
+          <button class="secondary-button" type="button" data-fail-focus-action="previous"${index === 0 ? " disabled" : ""}>← 上一项</button>
+          <span>${index + 1} / ${failStats.length}</span>
+          <button class="secondary-button" type="button" data-fail-focus-action="next"${index === failStats.length - 1 ? " disabled" : ""}>下一项 →</button>
+        </div>
+      </div>
+      <div class="fail-focus-grid">
+        <section class="fail-focus-card fail-focus-composition">
+          <div class="fail-share-ring" style="--fail-share: ${Math.max(0, Math.min(100, failShare * 100))}">
+            <strong>${formatPercent(failShare)}</strong>
+            <span>Fail 占比</span>
+          </div>
+          <div class="fail-focus-copy">
+            <span class="fail-focus-label">Fail 构成</span>
+            <strong>${formatInteger(item.count)} / ${formatInteger(totalFail)} Fail</strong>
+            <p>该测试项占全部 Fail 的 ${formatPercent(failShare)}</p>
+          </div>
+        </section>
+        <section class="fail-focus-card fail-focus-impact">
+          <span class="fail-focus-label">批次影响</span>
+          <strong class="fail-focus-large">${formatPercent(totalShare)}</strong>
+          <p>${formatInteger(item.count)} / ${formatInteger(totalRecords)} 条测试记录</p>
+          <div class="fail-impact-track"><i style="width:${Math.max(0, Math.min(100, totalShare * 100))}%"></i></div>
+        </section>
+        <section class="fail-focus-card fail-focus-direction">
+          <span class="fail-focus-label">超限方向</span>
+          ${summaryOnly ? `
+            <div class="fail-direction-unavailable">Summary 汇总报告不含偏低/偏高方向数据</div>` : `
+            <div class="fail-direction-track" aria-label="偏低、偏高和无法判定占比">
+              <i class="is-low" style="width:${lowShare * 100}%"></i>
+              <i class="is-high" style="width:${highShare * 100}%"></i>
+              <i class="is-unknown" style="width:${unknownShare * 100}%"></i>
+            </div>
+            <div class="fail-direction-values">
+              <span><i class="is-low"></i>偏低 <strong>${formatInteger(low)}</strong><small>${formatPercent(lowShare)}</small></span>
+              <span><i class="is-high"></i>偏高 <strong>${formatInteger(high)}</strong><small>${formatPercent(highShare)}</small></span>
+              <span><i class="is-unknown"></i>无法判定 <strong>${formatInteger(unknown)}</strong><small>${formatPercent(unknownShare)}</small></span>
+            </div>`}
+        </section>
+      </div>
+      <div class="fail-focus-actions">
+        <p>${detailAvailable ? "继续查看该测试项的实测分布或逐颗 Fail 记录。" : "当前选择为 Summary 汇总报告，详细分布与逐颗记录不可用。"}</p>
+        <div>
+          <button class="secondary-button" type="button" data-fail-focus-action="details"${detailAvailable ? "" : " disabled"}>查看 Fail 明细</button>
+          <button class="primary-button" type="button" data-fail-focus-action="distribution"${detailAvailable ? "" : " disabled"}>查看超限分布</button>
+        </div>
+      </div>`;
+  }
+
+  function selectOverviewFailReason(reason) {
+    const failStats = overviewFailStats();
+    if (!failStats.some((item) => item.reason === reason)) return;
+    state.selectedOverviewFailReason = reason;
+    const summaryOnly = !state.analysis.total && failStats.some((item) => item.source === "summary");
+    renderFailFocusCard(failStats, summaryOnly);
+    drawParetoChart();
+  }
+
+  function moveOverviewFailSelection(offset) {
+    const failStats = overviewFailStats();
+    const index = failStats.findIndex((item) => item.reason === state.selectedOverviewFailReason);
+    const target = failStats[index + offset];
+    if (target) selectOverviewFailReason(target.reason);
   }
 
   function renderFailDistribution() {
@@ -1216,6 +1319,7 @@
   function openFileDistribution(fileId) {
     if (!state.files.some((file) => file.id === fileId)) return;
     state.filterId = fileId;
+    state.selectedOverviewFailReason = "";
     state.selectedFailReason = "all";
     state.selectedDistributionReason = "";
     state.distributionLimits.clear();
@@ -1249,6 +1353,7 @@
     state.summaryAggregate = null;
     state.filterId = "all";
     state.selectedTest = "";
+    state.selectedOverviewFailReason = "";
     state.selectedFailReason = "all";
     state.selectedDistributionReason = "";
     state.distributionResult = null;
@@ -1282,14 +1387,6 @@
     const target = document.getElementById(`${tabName}Panel`);
     if (target) target.hidden = false;
     requestAnimationFrame(drawVisibleCharts);
-  }
-
-  function openFailReason(reason) {
-    if (!state.analysis?.selectedFiles.length) {
-      showMessage("Summary 汇总报告不含逐颗实测值，无法打开数值分布。", "error");
-      return;
-    }
-    openFailDistribution(reason);
   }
 
   function openFailDistribution(reason) {
@@ -1557,14 +1654,28 @@
     return "within";
   }
 
-  function rangeOverflow(points, range) {
+  function rangeOverflow(points, range, representativeLimit = 6) {
     let low = 0;
     let high = 0;
+    const representativesLow = new Map();
+    const representativesHigh = new Map();
+    const maxPointIndex = Math.max(points[points.length - 1]?.index || 1, 1);
     points.forEach((point) => {
-      if (point.value < range.min) low += 1;
-      else if (point.value > range.max) high += 1;
+      const bucket = Math.max(0, Math.min(representativeLimit - 1, Math.floor((point.index / maxPointIndex) * representativeLimit)));
+      if (point.value < range.min) {
+        low += 1;
+        if (!representativesLow.has(bucket)) representativesLow.set(bucket, point);
+      } else if (point.value > range.max) {
+        high += 1;
+        if (!representativesHigh.has(bucket)) representativesHigh.set(bucket, point);
+      }
     });
-    return { low, high, visible: points.length - low - high };
+    return {
+      low,
+      high,
+      visible: points.length - low - high,
+      representatives: [...representativesLow.values(), ...representativesHigh.values()],
+    };
   }
 
   function drawFailSequenceChart(result, limits) {
@@ -1602,9 +1713,7 @@
       ctx.setLineDash([3, 4]);
       ctx.beginPath(); ctx.moveTo(margin.left, meanY); ctx.lineTo(margin.left + plotW, meanY); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = theme.success;
-      ctx.textAlign = "left";
-      ctx.fillText(`均值 ${formatNumber(result.mean)}`, margin.left + 6, meanY - 6);
+      drawChartPill(ctx, `均值 ${formatNumber(result.mean)}`, margin.left + 8, meanY - 6, theme, "left", theme.success);
     }
 
     const points = downsample(result.points, 1100);
@@ -1613,9 +1722,16 @@
     ctx.rect(margin.left, margin.top, plotW, plotH);
     ctx.clip();
     ctx.beginPath();
-    points.forEach((point, index) => {
-      const xy = [xFor(point), clippedYFor(point.value)];
-      index ? ctx.lineTo(...xy) : ctx.moveTo(...xy);
+    let segmentOpen = false;
+    points.forEach((point) => {
+      if (point.value < range.min || point.value > range.max) {
+        segmentOpen = false;
+        return;
+      }
+      const xy = [xFor(point), yFor(point.value)];
+      if (segmentOpen) ctx.lineTo(...xy);
+      else ctx.moveTo(...xy);
+      segmentOpen = true;
     });
     ctx.strokeStyle = colorWithAlpha(theme.accent, 0.42);
     ctx.lineWidth = 1;
@@ -1626,21 +1742,24 @@
       ctx.beginPath(); ctx.arc(xFor(point), clippedYFor(point.value), 1.25, 0, Math.PI * 2); ctx.fill();
     });
     ctx.fillStyle = theme.danger;
-    points.filter((point) => simulatedDirection(point, limits, result.specVariant) !== "within").forEach((point) => {
-      ctx.beginPath(); ctx.arc(xFor(point), clippedYFor(point.value), 2.4, 0, Math.PI * 2); ctx.fill();
+    points.filter((point) => point.value >= range.min && point.value <= range.max
+      && simulatedDirection(point, limits, result.specVariant) !== "within").forEach((point) => {
+      ctx.beginPath(); ctx.arc(xFor(point), yFor(point.value), 2.4, 0, Math.PI * 2); ctx.fill();
+    });
+
+    overflow.representatives.forEach((point) => {
+      ctx.beginPath();
+      ctx.arc(xFor(point), point.value > range.max ? margin.top + 10 : margin.top + plotH - 10, 2.4, 0, Math.PI * 2);
+      ctx.fill();
     });
     ctx.restore();
     if (!result.specVariant) drawHorizontalSpecLines(ctx, limits, margin, plotW, yFor, theme);
 
     if (range.focused && overflow.high) {
-      ctx.fillStyle = theme.danger;
-      ctx.textAlign = "left";
-      ctx.fillText(`↑ 视窗外高值 ${formatInteger(overflow.high)}`, margin.left + 7, margin.top + 15);
+      drawOverflowBadge(ctx, `视窗外高值 ${formatInteger(overflow.high)}`, margin.left + 8, margin.top + 8, theme);
     }
     if (range.focused && overflow.low) {
-      ctx.fillStyle = theme.danger;
-      ctx.textAlign = "left";
-      ctx.fillText(`↓ 视窗外低值 ${formatInteger(overflow.low)}`, margin.left + 7, margin.top + plotH - 7);
+      drawOverflowBadge(ctx, `视窗外低值 ${formatInteger(overflow.low)}`, margin.left + 8, margin.top + plotH - 27, theme);
     }
 
     ctx.fillStyle = theme.muted;
@@ -1663,24 +1782,43 @@
     });
   }
 
-  function drawChartPill(ctx, text, anchorX, baselineY, theme, align = "right") {
+  function drawChartPill(ctx, text, anchorX, baselineY, theme, align = "right", color = theme.danger) {
     const horizontalPadding = 6;
     const height = 20;
     const width = Math.ceil(ctx.measureText(text).width) + horizontalPadding * 2;
-    const left = align === "center" ? anchorX - width / 2 : anchorX - width;
+    const left = align === "left" ? anchorX : align === "center" ? anchorX - width / 2 : anchorX - width;
     const top = baselineY - 14;
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.fillStyle = theme.surface;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    roundRect(ctx, left, top, width, height, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.textAlign = align === "left" ? "left" : align === "center" ? "center" : "right";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(text, align === "left" ? anchorX + horizontalPadding : align === "center" ? anchorX : anchorX - horizontalPadding, baselineY);
+    ctx.restore();
+  }
+
+  function drawOverflowBadge(ctx, text, left, top, theme) {
+    const horizontalPadding = 7;
+    const height = 22;
+    const width = Math.ceil(ctx.measureText(text).width) + horizontalPadding * 2;
     ctx.save();
     ctx.setLineDash([]);
     ctx.fillStyle = theme.surface;
     ctx.strokeStyle = theme.danger;
     ctx.lineWidth = 1;
-    roundRect(ctx, left, top, width, height, 5);
+    roundRect(ctx, left, top, width, height, 6);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = theme.danger;
-    ctx.textAlign = align === "center" ? "center" : "right";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillText(text, align === "center" ? anchorX : anchorX - horizontalPadding, baselineY);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, left + horizontalPadding, top + height / 2);
     ctx.restore();
   }
 
@@ -1800,7 +1938,7 @@
       const y = margin.top + index * rowH + rowH * 0.16;
       const barH = rowH * 0.68;
       const barW = (item.count / max) * plotW;
-      ctx.fillStyle = index === 0 ? theme.danger : theme.accent;
+      ctx.fillStyle = item.reason === state.selectedOverviewFailReason ? theme.danger : theme.accent;
       roundRect(ctx, margin.left, y, Math.max(barW, 2), barH, 4);
       ctx.fill();
       ctx.fillStyle = theme.text;
@@ -1828,13 +1966,13 @@
   }
 
   function onParetoClick(event) {
-    if (!state.analysis?.selectedFiles.length) return;
+    if (!overviewFailStats().length) return;
     const canvas = el.paretoChart;
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     const hit = (canvas._hitBars || []).find((bar) => x >= bar.x && x <= bar.x + bar.width && y >= bar.y && y <= bar.y + bar.height);
-    if (hit) openFailReason(hit.reason);
+    if (hit) selectOverviewFailReason(hit.reason);
   }
 
   function drawYieldChart() {

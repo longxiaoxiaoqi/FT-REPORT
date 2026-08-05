@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>FT 数据分析工作台</title>
-  <link rel="stylesheet" href="styles.css?v=1.38.0">
-  <script src="ft-core.js?v=1.38.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.39.0">
+  <script src="ft-core.js?v=1.39.0" defer></script>
   <script src="sevenzip-loader.js?v=1.21.0" defer></script>
-  <script src="app.js?v=1.38.0" defer></script>
+  <script src="app.js?v=1.39.0" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -130,7 +130,7 @@
             <div class="panel-header">
               <div>
                 <h2>Fail 归因 Pareto</h2>
-                <p>按 Soft Bin 对应测试项统计，点击柱条可查看明细</p>
+                <p>按 Soft Bin 对应测试项统计，点击柱条切换下方单项分析</p>
               </div>
             </div>
             <div class="chart-wrap chart-tall">
@@ -151,30 +151,14 @@
           </article>
         </div>
 
-        <article class="panel">
+        <article class="panel fail-focus-panel">
           <div class="panel-header">
             <div>
-              <h2>主要 Fail 项</h2>
-              <p>“偏低/偏高”依据实测值与 CSV 中上下限判断</p>
+              <h2>当前 Fail 项分析</h2>
+              <p>点击上方 Pareto 柱切换测试项</p>
             </div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>排名</th>
-                  <th>Fail 测试项</th>
-                  <th>数量</th>
-                  <th>Fail 占比</th>
-                  <th>总测试占比</th>
-                  <th>偏低</th>
-                  <th>偏高</th>
-                  <th>无法判定方向</th>
-                </tr>
-              </thead>
-              <tbody id="failTableBody"></tbody>
-            </table>
-          </div>
+          <div id="failFocusContent" class="fail-focus-content"></div>
         </article>
       </section>
 
@@ -425,7 +409,7 @@
 
   <footer>
     <span>本地离线分析 · 不上传测试数据</span>
-    <span id="versionText">v1.38</span>
+    <span id="versionText">v1.39</span>
   </footer>
 </body>
 </html>
