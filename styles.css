@@ -252,6 +252,7 @@ footer {
 }
 
 .toolbar {
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 8px;
@@ -282,9 +283,20 @@ footer {
 
 .toolbar-fields {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: 16px;
   min-width: 0;
+}
+
+.toolbar-fields > label:first-child {
+  flex: 1 1 720px;
+  min-width: 0;
+}
+
+#fileFilter {
+  width: min(1000px, 58vw);
+  max-width: none;
 }
 
 select,

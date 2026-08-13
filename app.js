@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.42",
+      version: "v1.43",
       current: true,
+      title: "分析范围文件名完整显示",
+      changes: [
+        "扩大分析范围选择框及展开列表宽度，桌面端可利用更多横向空间显示长文件名。",
+        "压缩包内文件在选项中省略重复的压缩包路径，保留测试时间、阶段、格式与完整 CSV 文件名。",
+        "工具栏支持按窗口宽度自动换行，避免扩大文件选择框后挤压统计口径和操作按钮。"
+      ],
+    },
+    {
+      version: "v1.42",
+      current: false,
       title: "Fail 分布与 Pass 稳定性测试项联动",
       changes: [
         "Fail 分布与 Pass 稳定性共用当前测试项：任一界面切换项目后，另一界面同步选中同名项目。",
@@ -629,11 +639,11 @@
       : `全部明细 CSV 汇总（${state.files.length}）`;
     const detailOptions = state.files.map((file) => {
       const time = file.fileTimeLabel ? `${file.fileTimeLabel} · ` : "";
-      return `<option value="${escapeHtml(file.id)}">${escapeHtml(time)}${escapeHtml(file.testType || "初测")} ${escapeHtml(file.stage)} · ${escapeHtml(file.format || "未知")} · ${escapeHtml(shortName(file.name, 46))}</option>`;
+      return `<option value="${escapeHtml(file.id)}">${escapeHtml(time)}${escapeHtml(file.testType || "初测")} ${escapeHtml(file.stage)} · ${escapeHtml(file.format || "未知")} · ${escapeHtml(rangeFileName(file))}</option>`;
     }).join("");
     const summaryOptions = state.summaryReports.map((report) => {
       const time = report.fileTimeLabel ? `${report.fileTimeLabel} · ` : "";
-      return `<option value="summary:${escapeHtml(report.id)}">${escapeHtml(time)}${escapeHtml(report.stage)} · ${escapeHtml(shortName(report.name, 46))}</option>`;
+      return `<option value="summary:${escapeHtml(report.id)}">${escapeHtml(time)}${escapeHtml(report.stage)} · ${escapeHtml(rangeFileName(report))}</option>`;
     }).join("");
     el.fileFilter.innerHTML = `
       <option value="all">${totalLabel}</option>
@@ -2576,6 +2586,13 @@
   function shortName(value, maxLength) {
     const text = String(value || "");
     return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  }
+
+  function rangeFileName(file) {
+    const name = String(file?.name || "");
+    const archiveSeparator = name.lastIndexOf(" / ");
+    const entryName = archiveSeparator >= 0 ? name.slice(archiveSeparator + 3) : name;
+    return entryName.replace(/\\/g, "/").split("/").pop() || entryName;
   }
 
   function escapeHtml(value) {
