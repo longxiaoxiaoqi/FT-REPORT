@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.44",
+      version: "v1.45",
       current: true,
+      title: "GitHub 问题与反馈入口",
+      changes: [
+        "在更新日志标题栏增加简洁的“问题与反馈”按钮，可直接打开项目 GitHub 仓库。",
+        "反馈入口使用新标签页打开，并补充安全属性与键盘焦点样式。",
+        "优化桌面端居中布局和小屏自适应显示，避免挤压版本说明与更新状态。"
+      ],
+    },
+    {
+      version: "v1.44",
+      current: false,
       title: "Fail 测试项菜单分组",
       changes: [
         "Fail 分布下拉菜单默认只显示有归因 Fail 的测试项，减少无 Fail 项造成的列表干扰。",
