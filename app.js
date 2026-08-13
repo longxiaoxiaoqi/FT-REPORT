@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.40",
+      version: "v1.41",
       current: true,
+      title: "三种良率口径与工厂报告锚定",
+      changes: [
+        "将测试事件、正式初测和工厂最终三种统计口径分开，避免把工程调试、QA 与复测事件重复计入工厂良率。",
+        "支持直接导入工厂良率 XLSX，以测试投入锚定正式生产区间，并显示来源、置信度及无法唯一匹配的提示。",
+        "正式生产起始序号可人工确认；导出结果增加生产区间、工厂对账和推算恢复数量，便于追溯每个计数的来源。"
+      ],
+    },
+    {
+      version: "v1.40",
+      current: false,
       title: "工厂良率估算与文件角色审计",
       changes: [
         "新增测试事件口径与工厂口径（估算）切换；工厂口径以初测文件作为有效投入，以 HBin1 作为主产品产出。",
@@ -235,10 +245,13 @@
   const state = {
     files: [],
     summaryReports: [],
+    factoryReports: [],
     filterId: "all",
     analysis: null,
     analysisMode: "events",
     factoryAnalysis: null,
+    productionFlow: null,
+    productionOverrides: {},
     summaryAggregate: null,
     activeTab: "overview",
     selectedTest: "",
@@ -270,7 +283,7 @@
     "simulatedLowerInput", "simulatedUpperInput", "resetLimitsButton", "yieldSimulation",
     "rangeModeButton", "summaryReportPanel", "summaryReportHint", "summaryReportStatus",
     "summaryReportMetrics", "summaryReportTableBody", "summaryBinTableBody", "summaryFailTableBody", "releaseLog",
-    "factoryPanel", "factoryStatus", "factoryMetrics", "factoryWarnings",
+    "factoryPanel", "factoryStatus", "factoryAnchorSummary", "factoryMetrics", "factoryRangeTableBody", "factoryWarnings",
   ];
   ids.forEach((id) => { el[id] = document.getElementById(id); });
 
@@ -315,7 +328,8 @@
       analyzeAndRender();
     });
     el.analysisMode.addEventListener("change", () => {
-      state.analysisMode = el.analysisMode.value === "factory" ? "factory" : "events";
+      state.analysisMode = ["events", "initial", "factory"].includes(el.analysisMode.value)
+        ? el.analysisMode.value : "events";
       analyzeAndRender();
     });
     el.testItemSelect.addEventListener("change", () => {
@@ -403,6 +417,20 @@
       if (row) openFileDistribution(row.dataset.analysisFileId);
     });
     el.paretoChart.addEventListener("click", onParetoClick);
+    el.factoryRangeTableBody.addEventListener("change", (event) => {
+      const input = event.target.closest("input[data-production-start]");
+      if (!input) return;
+      const fileId = input.dataset.productionStart;
+      const value = Math.max(1, Math.round(Number(input.value) || 1));
+      state.productionOverrides[fileId] = { startSequence: value };
+      analyzeAndRender();
+    });
+    el.factoryRangeTableBody.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-reset-production-start]");
+      if (!button) return;
+      delete state.productionOverrides[button.dataset.resetProductionStart];
+      analyzeAndRender();
+    });
 
     let resizeTimer = null;
     window.addEventListener("resize", () => {
@@ -431,16 +459,21 @@
   }
 
   async function handleFiles(files) {
-    const sourceFiles = files.filter((file) => /\.(csv|zip|7z|rar)$/i.test(file.name));
+    const sourceFiles = files.filter((file) => /\.(csv|xlsx|zip|7z|rar)$/i.test(file.name));
     if (!sourceFiles.length) {
-      showMessage("请选择或拖入 .csv、.zip、.7z 或 .rar 文件。", "error");
+      showMessage("请选择或拖入 .csv、.xlsx、.zip、.7z 或 .rar 文件。", "error");
       return;
     }
 
     showMessage(`正在读取 ${sourceFiles.length} 个文件…`);
     const errors = [];
     const csvFiles = [];
+    const xlsxFiles = [];
     for (const file of sourceFiles) {
+      if (file.name.toLowerCase().endsWith(".xlsx")) {
+        xlsxFiles.push(file);
+        continue;
+      }
       if (file.name.toLowerCase().endsWith(".csv")) {
         csvFiles.push({
           name: file.name,
@@ -485,6 +518,7 @@
 
     let addedDetails = 0;
     let addedSummaries = 0;
+    let addedFactoryReports = 0;
     for (const file of csvFiles) {
       const signature = file.signature;
       if (state.files.some((item) => item.signature === signature)
@@ -510,9 +544,23 @@
         errors.push(`${file.name}：${error.message}`);
       }
     }
+    for (const file of xlsxFiles) {
+      const signature = `xlsx:${file.name}|${file.size}|${file.lastModified}`;
+      if (state.factoryReports.some((item) => item.signature === signature)) continue;
+      try {
+        const parsed = await Core.parseFactoryYieldWorkbook(await file.arrayBuffer(), file.name);
+        parsed.signature = signature;
+        parsed.size = file.size;
+        parsed.lastModified = file.lastModified;
+        state.factoryReports.push(parsed);
+        addedFactoryReports += 1;
+      } catch (error) {
+        errors.push(`${file.name}：${error.message}`);
+      }
+    }
     el.fileInput.value = "";
 
-    const added = addedDetails + addedSummaries;
+    const added = addedDetails + addedSummaries + addedFactoryReports;
     if (added) {
       state.files = Core.sortFilesChronologically(state.files);
       state.summaryReports = Core.sortFilesChronologically(state.summaryReports);
@@ -528,13 +576,15 @@
     const loadedText = [
       addedDetails ? `${addedDetails} 个明细 CSV` : "",
       addedSummaries ? `${addedSummaries} 个 Summary 汇总报告` : "",
+      addedFactoryReports ? `${addedFactoryReports} 个工厂良率 XLSX` : "",
     ].filter(Boolean).join("、");
     if (errors.length) showMessage(`已载入 ${loadedText || "0 个文件"}；${errors.join("；")}`, "error");
-    else if (addedSummaries && !state.files.length) {
-      showMessage(`已载入 ${loadedText}；请在“分析范围”中选择某个 Summary 汇总报告查看。`, "success");
+    else if (!state.files.length) {
+      showMessage(`已载入 ${loadedText}；请继续添加明细 CSV 进行匹配分析。`, "success");
     } else if (added) {
       const summaryHint = addedSummaries ? "；Summary 已独立收纳，可在“分析范围”中选择查看" : "";
-      showMessage(`已载入 ${loadedText}，共 ${formatInteger(state.analysis.total)} 条逐颗测试记录${summaryHint}。`, "success");
+      const factoryHint = addedFactoryReports ? "；工厂良率报告已作为最终良率锚点" : "";
+      showMessage(`已载入 ${loadedText}，共 ${formatInteger(state.analysis.total)} 条逐颗测试记录${summaryHint}${factoryHint}。`, "success");
     }
     else showMessage("这些文件已经载入，无需重复添加。", "error");
   }
@@ -557,8 +607,12 @@
       || state.summaryReports.some((report) => report.id === summaryFilterId)
       ? state.filterId
       : "all";
-    const totalLabel = state.summaryReports.length
-      ? `全部明细 CSV（${state.files.length}；另有 ${state.summaryReports.length} 个 Summary 可选）`
+    const extras = [
+      state.summaryReports.length ? `${state.summaryReports.length} 个 Summary 可选` : "",
+      state.factoryReports.length ? `${state.factoryReports.length} 个工厂 XLSX 锚点` : "",
+    ].filter(Boolean).join("；");
+    const totalLabel = extras
+      ? `全部明细 CSV（${state.files.length}；另有 ${extras}）`
       : `全部明细 CSV 汇总（${state.files.length}）`;
     const detailOptions = state.files.map((file) => {
       const time = file.fileTimeLabel ? `${file.fileTimeLabel} · ` : "";
@@ -585,6 +639,9 @@
     state.factoryAnalysis = summaryFilterId
       ? null
       : Core.analyzeFactory?.(state.files, detailFilterId) || null;
+    state.productionFlow = summaryFilterId
+      ? null
+      : Core.analyzeProductionFlow?.(state.analysis.selectedFiles, state.factoryReports, state.productionOverrides) || null;
     const reports = summaryFilterId
       ? state.summaryReports.filter((report) => report.id === summaryFilterId)
       : [];
@@ -621,8 +678,8 @@
   function renderSummary() {
     const a = state.analysis;
     const summaryOnly = !a.total && Boolean(state.summaryAggregate?.reports.length);
-    if (state.analysisMode === "factory" && !summaryOnly && state.factoryAnalysis) {
-      renderFactorySummaryCards(a, state.factoryAnalysis);
+    if (["initial", "factory"].includes(state.analysisMode) && !summaryOnly && state.productionFlow) {
+      renderProductionSummaryCards(a, state.productionFlow, state.analysisMode);
       return;
     }
     const source = summaryOnly ? state.summaryAggregate : a;
@@ -708,33 +765,96 @@
       </article>`).join("");
   }
 
+  function renderProductionSummaryCards(analysis, flow, mode) {
+    const product = productSummary(false, analysis);
+    const initial = flow.productionInitial;
+    const finalMode = mode === "factory";
+    const factory = flow.factory;
+    const cards = finalMode ? [
+      { label: "产品名称", value: escapeHtml(product.value), context: product.context, className: "product", title: product.title },
+      { label: "工厂投入", value: factory ? formatInteger(factory.input) : "待确认", context: factory ? `${factory.rows.length} 条工厂报告记录` : "未匹配工厂 XLSX", className: "" },
+      { label: "最终产出", value: factory ? formatInteger(factory.output) : "—", context: factory ? "采用工厂报告" : "缺少可靠最终结果", className: "pass" },
+      { label: "最终工厂良率", value: factory?.yield === null || !factory ? "待确认" : formatPercent(factory.yield), context: factory ? "最终产出 ÷ 工厂投入" : `${formatPercent(initial.yield || 0)}～100% 估算范围`, className: !factory ? "" : factory.yield >= 0.95 ? "pass" : "fail" },
+      { label: "推算复测恢复", value: flow.inferredRecovered === null ? "—" : formatInteger(flow.inferredRecovered), context: "工厂产出－正式初测 Pass", className: "uph" },
+      { label: "最终不良", value: flow.inferredFinalFail === null ? "—" : formatInteger(flow.inferredFinalFail), context: "工厂投入－最终产出", className: "fail" },
+      { label: "电性 / O/S", value: factory ? `${formatInteger(factory.electrical)} / ${formatInteger(factory.openShort)}` : "—", context: "来自工厂良率报告", className: "top-fail" },
+      { label: "数据置信度", value: confidenceText(flow.confidence), context: factory ? "工厂报告已匹配" : "需补充报告或人工确认", className: "" },
+    ] : [
+      { label: "产品名称", value: escapeHtml(product.value), context: product.context, className: "product", title: product.title },
+      { label: "正式初测投入", value: formatInteger(initial.total), context: `${flow.ranges.length} 个初测 CSV`, className: "" },
+      { label: "初测 Pass", value: formatInteger(initial.mainPass), context: "HBin1", className: "pass" },
+      { label: "正式初测良率", value: initial.yield === null ? "—" : formatPercent(initial.yield), context: "HBin1 ÷ 正式初测投入", className: initial.yield >= 0.95 ? "pass" : "fail" },
+      { label: "排除工程记录", value: formatInteger(flow.rawInitial.total - initial.total), context: "正式起点之前", className: "uph" },
+      { label: "初测不良", value: formatInteger(initial.nonMain), context: initial.total ? formatPercent(initial.nonMain / initial.total) : "—", className: "fail" },
+      { label: "复测事件", value: formatInteger(flow.retest.total), context: "单列，不重复计入投入", className: "top-fail" },
+      { label: "数据置信度", value: confidenceText(flow.confidence), context: flow.factory ? "工厂投入已锚定" : "可人工确认起点", className: "" },
+    ];
+    el.summaryCards.innerHTML = cards.map((card) => `
+      <article class="summary-card ${card.className}"${card.title ? ` title="${escapeHtml(card.title)}"` : ""}>
+        <div class="label">${card.label}</div>
+        <div class="value">${card.value}</div>
+        <div class="context">${card.context}</div>
+      </article>`).join("");
+  }
+
+  function confidenceText(level) {
+    return ({ high: "高", medium: "中", low: "低", confirmed: "已确认" })[level] || "待确认";
+  }
+
   function renderFactoryPanel() {
-    const factory = state.factoryAnalysis;
+    const flow = state.productionFlow;
     const summaryOnly = !state.analysis?.total && Boolean(state.summaryAggregate?.reports.length);
-    const visible = state.analysisMode === "factory" && !summaryOnly && Boolean(factory);
+    const visible = ["initial", "factory"].includes(state.analysisMode) && !summaryOnly && Boolean(flow);
     el.factoryPanel.hidden = !visible;
     if (!visible) return;
-
-    const closureDifference = factory.effectiveInput - factory.closureTotal;
-    el.factoryStatus.className = `badge ${factory.closed ? "pass" : "fail"}`;
-    el.factoryStatus.textContent = factory.closed ? "内部闭合 · 估算" : "存在未闭合数据";
-    const metrics = [
-      ["有效投入来源", factory.effectiveInputSource],
-      ["初测文件", `${formatInteger(factory.roles.initial.length)} 个`],
-      ["初测分类闭合", factory.closed ? `${formatInteger(factory.closureTotal)} / ${formatInteger(factory.effectiveInput)}` : `相差 ${formatInteger(closureDifference)}`],
-      ["复测事件", `${formatInteger(factory.retest.total)} 条 · 不覆盖初测`],
-      ["QA 验证", `${formatInteger(factory.qa.total)} 条 · 已排除`],
-      ["处置 / BIN 文件", `${formatInteger(factory.disposition.total)} 条 · 待确认规则`],
+    const confidence = flow.confidence;
+    el.factoryStatus.className = `badge ${confidence === "high" ? "pass" : confidence === "medium" ? "watch" : "fail"}`;
+    el.factoryStatus.textContent = `${confidenceText(confidence)}置信度`;
+    const matched = flow.factory?.rows.length || 0;
+    const reportRows = state.factoryReports.reduce((sum, report) => sum + (report.rows?.length || 0), 0);
+    el.factoryAnchorSummary.innerHTML = `
+      <strong>工厂报告锚点</strong>
+      <span>${state.factoryReports.length ? `${formatInteger(state.factoryReports.length)} 个 XLSX · ${formatInteger(reportRows)} 行 · 匹配 ${formatInteger(matched)} 行` : "尚未导入工厂良率 XLSX"}</span>
+      ${state.factoryReports.length ? `<span class="truncate" title="${escapeHtml(state.factoryReports.map((item) => item.name).join("；"))}">${escapeHtml(state.factoryReports.map((item) => item.name).join("；"))}</span>` : ""}`;
+    const metrics = state.analysisMode === "factory" ? [
+      ["工厂投入", flow.factory ? formatInteger(flow.factory.input) : "待确认"],
+      ["最终产出", flow.factory ? formatInteger(flow.factory.output) : "待确认"],
+      ["最终良率", flow.factory?.yield === null || !flow.factory ? "待确认" : formatPercent(flow.factory.yield)],
+      ["推算恢复", flow.inferredRecovered === null ? "—" : `${formatInteger(flow.inferredRecovered)} 条`],
+      ["最终不良", flow.inferredFinalFail === null ? "—" : `${formatInteger(flow.inferredFinalFail)} 条`],
+      ["复测事件", `${formatInteger(flow.retest.total)} 条 · 不重复投入`],
+    ] : [
+      ["原始初测记录", formatInteger(flow.rawInitial.total)],
+      ["正式初测投入", formatInteger(flow.productionInitial.total)],
+      ["排除工程记录", formatInteger(flow.rawInitial.total - flow.productionInitial.total)],
+      ["初测 Pass", formatInteger(flow.productionInitial.mainPass)],
+      ["初测不良", formatInteger(flow.productionInitial.nonMain)],
+      ["正式初测良率", flow.productionInitial.yield === null ? "—" : formatPercent(flow.productionInitial.yield)],
     ];
     el.factoryMetrics.innerHTML = metrics.map(([label, value]) => `
       <div class="factory-audit-item">
         <span>${escapeHtml(label)}</span>
         <strong>${escapeHtml(value)}</strong>
       </div>`).join("");
+    el.factoryRangeTableBody.innerHTML = flow.ranges.length ? flow.ranges.map((range) => `
+      <tr>
+        <td><span class="truncate" title="${escapeHtml(range.file.name)}">${escapeHtml(shortName(range.file.name, 40))}</span></td>
+        <td>${formatInteger(range.file.records.length)}</td>
+        <td><input class="production-start-input" type="number" min="1" max="${range.file.records.length}" value="${range.startSequence}" data-production-start="${escapeHtml(range.file.id)}" aria-label="${escapeHtml(range.file.name)} 正式生产起始序号"></td>
+        <td>${formatInteger(range.excluded)}</td>
+        <td>${formatInteger(range.included)}</td>
+        <td>${rangeSourceText(range.source)} · ${confidenceText(range.confidence)}</td>
+        <td><button class="text-button" type="button" data-reset-production-start="${escapeHtml(range.file.id)}">恢复自动</button></td>
+      </tr>`).join("") : `<tr><td colspan="7" class="empty-state">当前范围没有初测 CSV</td></tr>`;
+    const warnings = flow.warnings.length ? flow.warnings : ["生产区间与工厂投入已匹配；仍建议核对批号和 HBin 规则。"];
     el.factoryWarnings.innerHTML = `
       <strong>口径说明</strong>
-      <ul>${factory.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>
-      <p>下方 Pareto、趋势和 Fail 明细仍用于查看测试事件；工厂口径只改变总览计数与导出审计，不伪造逐颗复测合并结果。</p>`;
+      <ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>
+      <p>下方 Pareto、趋势和 Fail 明细仍展示测试事件。没有跨文件唯一产品 ID 时，软件只推算恢复数量，不伪造逐颗复测关联。</p>`;
+  }
+
+  function rangeSourceText(source) {
+    return ({ "factory-anchor": "工厂投入锚定", manual: "人工确认", "all-initial": "全部初测估算" })[source] || source;
   }
 
   function productSummary(summaryOnly, analysis) {
@@ -1448,8 +1568,11 @@
   function clearAll() {
     state.files = [];
     state.summaryReports = [];
+    state.factoryReports = [];
     state.analysis = null;
     state.factoryAnalysis = null;
+    state.productionFlow = null;
+    state.productionOverrides = {};
     state.summaryAggregate = null;
     state.filterId = "all";
     state.selectedTest = "";
@@ -1473,7 +1596,7 @@
     el.distributionTestButton.disabled = true;
     setDistributionPickerOpen(false);
     el.workspace.hidden = true;
-    showMessage("已清空当前分析。可继续拖入新的 CSV。", "success");
+    showMessage("已清空当前分析。可继续拖入新的 CSV、XLSX 或压缩包。", "success");
   }
 
   function switchTab(tabName) {
@@ -1518,21 +1641,31 @@
       : "";
     rows.push(["分析范围", state.filterId === "all" ? "全部明细 CSV 汇总" : selectedSummary || a.selectedFiles[0]?.name || ""]);
     rows.push(["数据来源", summaryOnly ? "Summary 汇总报告（不含逐颗实测值）" : "逐颗明细 CSV"]);
-    const factoryMode = state.analysisMode === "factory" && !summaryOnly && Boolean(state.factoryAnalysis);
-    rows.push(["统计口径", factoryMode ? "工厂口径（估算）" : "测试事件口径"]);
-    if (factoryMode) {
-      const f = state.factoryAnalysis;
+    const productionMode = ["initial", "factory"].includes(state.analysisMode) && !summaryOnly && Boolean(state.productionFlow);
+    const factoryMode = state.analysisMode === "factory" && productionMode;
+    rows.push(["统计口径", factoryMode ? "工厂最终口径" : productionMode ? "正式初测口径" : "测试事件口径"]);
+    if (productionMode) {
+      const f = state.productionFlow;
       rows.push([]);
-      rows.push(["工厂口径对账（估算）"]);
-      rows.push(["有效投入", f.effectiveInput, "投入来源", f.effectiveInputSource, "主产品产出(HBin1)", f.mainOutput, "工厂良率", f.yield === null ? "" : (f.yield * 100).toFixed(3) + "%"]);
-      rows.push(["HBin8", f.initial.hbin8, "电性(HBin3)", f.initial.electrical, "O/S(HBin5)", f.initial.openShort, "其他处置", f.initial.other]);
-      rows.push(["分类合计", f.closureTotal, "初测投入", f.effectiveInput, "内部闭合", f.closed ? "是" : "否"]);
-      rows.push(["复测事件（不覆盖初测）", f.retest.total, "QA 验证（已排除）", f.qa.total, "处置/BIN 文件（待确认）", f.disposition.total]);
+      rows.push(["生产口径与工厂对账"]);
+      rows.push(["原始初测记录", f.rawInitial.total, "正式初测投入", f.productionInitial.total, "排除工程记录", f.rawInitial.total - f.productionInitial.total, "正式初测良率", f.productionInitial.yield === null ? "" : (f.productionInitial.yield * 100).toFixed(3) + "%"]);
+      rows.push(["初测 HBin1", f.productionInitial.mainPass, "初测 HBin8", f.productionInitial.hbin8, "初测电性(HBin3)", f.productionInitial.electrical, "初测 O/S(HBin5)", f.productionInitial.openShort]);
+      rows.push(["复测事件（不重复投入）", f.retest.total, "QA 验证（已排除）", f.qa.total, "处置/BIN 文件", f.disposition.total, "置信度", confidenceText(f.confidence)]);
+      if (f.factory) rows.push(["工厂投入", f.factory.input, "最终产出", f.factory.output, "最终良率", (f.factory.yield * 100).toFixed(3) + "%", "推算恢复", f.inferredRecovered, "最终不良", f.inferredFinalFail]);
+      else rows.push(["工厂最终结果", "未匹配工厂良率 XLSX，不输出确定最终良率"]);
       f.warnings.forEach((warning) => rows.push(["口径提示", warning]));
+      rows.push([]);
+      rows.push(["正式生产区间审计"]);
+      rows.push(["初测文件", "原始记录", "正式起始序号", "排除工程记录", "正式投入", "区间依据", "置信度"]);
+      f.ranges.forEach((range) => rows.push([range.file.name, range.file.records.length, range.startSequence, range.excluded, range.included, rangeSourceText(range.source), confidenceText(range.confidence)]));
+      rows.push([]);
+      rows.push(["工厂报告锚点"]);
+      rows.push(["报告文件", "行号", "子批号", "产品", "客户批号", "测试投入", "测试产出", "测试良率", "电性", "O/S"]);
+      (f.factory?.rows || []).forEach((row) => rows.push([row.source, row.rowNumber, row.lot, row.product, row.customerLot, row.input, row.output, row.yield === null ? "" : (row.yield * 100).toFixed(3) + "%", row.electrical, row.openShort]));
       rows.push([]);
       rows.push(["测试事件参考"]);
     }
-    rows.push([factoryMode ? "测试事件记录" : "测试记录", source.total, "Pass", source.pass, "Fail", source.fail, "良率", (source.yield * 100).toFixed(3) + "%"]);
+    rows.push([productionMode ? "测试事件记录" : "测试记录", source.total, "Pass", source.pass, "Fail", source.fail, "良率", (source.yield * 100).toFixed(3) + "%"]);
     rows.push([
       "单颗测试时间(ms)", rawNumber(source.testTimeMs),
       "Index 时间(ms)", source.indexTimeMs,
@@ -1567,7 +1700,7 @@
         item.sbin, item.hbin, item.description, item.count, (item.share * 100).toFixed(3) + "%",
       ]));
     }
-    if (factoryMode) {
+    if (productionMode) {
       rows.push([]);
       rows.push(["文件角色审计"]);
       rows.push(["文件", "阶段", "角色", "工厂口径处理", "记录数", "测试事件 Pass", "测试事件 Fail", "测试事件良率"]);

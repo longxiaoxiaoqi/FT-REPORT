@@ -122,7 +122,7 @@
     return new Uint8Array(await new Response(source).arrayBuffer());
   }
 
-  async function extractCsvEntriesFromZip(arrayBuffer, zipName = "压缩包.zip") {
+  async function extractZipEntries(arrayBuffer, zipName = "压缩包.zip", includeEntry = () => true) {
     const bytes = new Uint8Array(arrayBuffer);
     const view = new DataView(arrayBuffer);
     const minEocdSize = 22;
@@ -166,7 +166,7 @@
       const entryName = decodeZipFileName(bytes.subarray(nameStart, nameEnd), Boolean(flags & 0x0800)).replace(/\\/g, "/");
       cursor = nameEnd + extraLength + commentLength;
 
-      if (entryName.endsWith("/") || !entryName.toLowerCase().endsWith(".csv")) continue;
+      if (entryName.endsWith("/") || !includeEntry(entryName)) continue;
       if (flags & 0x0001) throw new Error(`${entryName} 已加密，无法读取`);
       if (uncompressedSize > 256 * 1024 * 1024) throw new Error(`${entryName} 解压后超过 256 MB，已停止处理`);
       totalUncompressed += uncompressedSize;
@@ -188,6 +188,122 @@
       entries.push({ name: entryName, bytes: extracted, size: extracted.length });
     }
     return entries;
+  }
+
+  function extractCsvEntriesFromZip(arrayBuffer, zipName = "压缩包.zip") {
+    return extractZipEntries(arrayBuffer, zipName, (entryName) => entryName.toLowerCase().endsWith(".csv"));
+  }
+
+  function decodeXmlText(value) {
+    return String(value || "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/&#(\d+);/g, (_, number) => String.fromCodePoint(Number(number)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, number) => String.fromCodePoint(parseInt(number, 16)));
+  }
+
+  function xmlTagText(xml, tagName) {
+    const matches = Array.from(String(xml || "").matchAll(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, "gi")));
+    return decodeXmlText(matches.map((match) => match[1].replace(/<[^>]+>/g, "")).join(""));
+  }
+
+  function xlsxColumnIndex(reference) {
+    const letters = String(reference || "").match(/^[A-Z]+/i)?.[0]?.toUpperCase() || "";
+    let result = 0;
+    for (const letter of letters) result = result * 26 + letter.charCodeAt(0) - 64;
+    return Math.max(0, result - 1);
+  }
+
+  function parseXlsxSheet(xml, sharedStrings) {
+    const rows = [];
+    for (const rowMatch of String(xml || "").matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/gi)) {
+      const row = [];
+      for (const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)) {
+        const attributes = cellMatch[1];
+        const body = cellMatch[2];
+        const reference = attributes.match(/\br="([^"]+)"/i)?.[1] || "";
+        const type = attributes.match(/\bt="([^"]+)"/i)?.[1] || "";
+        const index = xlsxColumnIndex(reference);
+        const raw = xmlTagText(body, type === "inlineStr" ? "t" : "v");
+        row[index] = type === "s" ? sharedStrings[Number(raw)] ?? "" : raw;
+      }
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function factoryHeaderIndex(headers, candidates) {
+    const normalized = headers.map((value) => keyName(value).replace(/[\s_/-]+/g, ""));
+    return candidates.map((value) => keyName(value).replace(/[\s_/-]+/g, ""))
+      .map((candidate) => normalized.indexOf(candidate))
+      .find((index) => index >= 0) ?? -1;
+  }
+
+  function parseFactoryYieldRows(rows, fileName = "工厂良率汇总.xlsx") {
+    const headerIndex = rows.findIndex((row) => {
+      const keys = row.map((value) => keyName(value).replace(/[\s_/-]+/g, ""));
+      return keys.includes("测试投入") && keys.includes("测试产出") && keys.includes("测试良率");
+    });
+    if (headerIndex < 0) throw new Error("未找到包含测试投入、测试产出和测试良率的工厂汇总表头");
+    const headers = rows[headerIndex];
+    const indexes = {
+      date: factoryHeaderIndex(headers, ["日期", "Date"]),
+      customer: factoryHeaderIndex(headers, ["客户", "Customer"]),
+      lot: factoryHeaderIndex(headers, ["子批号", "MES LotID", "Sub Lot Number", "批号"]),
+      product: factoryHeaderIndex(headers, ["产品型号", "Product Model", "Device"]),
+      customerLot: factoryHeaderIndex(headers, ["客户批号", "Customer Lot", "Cust LotID"]),
+      input: factoryHeaderIndex(headers, ["测试投入", "Input"]),
+      output: factoryHeaderIndex(headers, ["测试产出", "Output"]),
+      yield: factoryHeaderIndex(headers, ["测试良率", "Yield"]),
+      appearance: factoryHeaderIndex(headers, ["外观", "Appearance"]),
+      electrical: factoryHeaderIndex(headers, ["电性", "Electrical"]),
+      openShort: factoryHeaderIndex(headers, ["O/S", "OS", "Open Short"]),
+    };
+    const result = [];
+    for (let rowIndex = headerIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex];
+      const input = finiteNumber(row[indexes.input]);
+      const output = finiteNumber(row[indexes.output]);
+      if (input === null || output === null) continue;
+      const reportedYield = finiteNumber(row[indexes.yield]);
+      result.push({
+        source: fileName,
+        rowNumber: rowIndex + 1,
+        date: clean(row[indexes.date]),
+        customer: clean(row[indexes.customer]),
+        lot: clean(row[indexes.lot]),
+        product: clean(row[indexes.product]),
+        customerLot: clean(row[indexes.customerLot]),
+        input,
+        output,
+        yield: reportedYield === null ? (input ? output / input : null) : (reportedYield > 1 ? reportedYield / 100 : reportedYield),
+        appearance: finiteNumber(row[indexes.appearance]) || 0,
+        electrical: finiteNumber(row[indexes.electrical]) || 0,
+        openShort: finiteNumber(row[indexes.openShort]) || 0,
+      });
+    }
+    if (!result.length) throw new Error("工厂汇总表中没有可用的数据行");
+    return result;
+  }
+
+  async function parseFactoryYieldWorkbook(arrayBuffer, fileName = "工厂良率汇总.xlsx") {
+    const entries = await extractZipEntries(arrayBuffer, fileName, (entryName) => /^(?:xl\/sharedStrings\.xml|xl\/worksheets\/sheet\d+\.xml)$/i.test(entryName));
+    const entryMap = new Map(entries.map((entry) => [entry.name.toLowerCase(), new TextDecoder("utf-8").decode(entry.bytes)]));
+    const sharedXml = entryMap.get("xl/sharedstrings.xml") || "";
+    const sharedStrings = Array.from(sharedXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/gi)).map((match) => xmlTagText(match[1], "t"));
+    const sheetEntry = entries
+      .filter((entry) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(entry.name))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))[0];
+    if (!sheetEntry) throw new Error("Excel 中没有可读取的工作表");
+    const sheetXml = new TextDecoder("utf-8").decode(sheetEntry.bytes);
+    return {
+      id: `factory-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: fileName,
+      rows: parseFactoryYieldRows(parseXlsxSheet(sheetXml, sharedStrings), fileName),
+    };
   }
 
   function findDescriptorRow(rows, headerIndex, label) {
@@ -1844,6 +1960,127 @@
     };
   }
 
+  function normalizedIdentity(value) {
+    return clean(value).toLowerCase().replace(/[^a-z0-9一-龥]+/g, "");
+  }
+
+  function matchFactoryRows(files, factoryReports = []) {
+    const initialFiles = files.filter((file) => factoryFileRole(file) === "initial");
+    const rowByIdentity = new Map();
+    factoryReports.flatMap((report) => report.rows || []).forEach((row) => {
+      const key = [row.lot, row.product, row.customerLot].map(normalizedIdentity).join("\u0000");
+      rowByIdentity.set(key, row); // 同一批次重复导入时，以最后导入的报告为准，避免重复累计。
+    });
+    const reportRows = Array.from(rowByIdentity.values());
+    return reportRows.map((row) => {
+      const matches = initialFiles.filter((file) => {
+        const lot = metadataValue(file, "MES LotID") || metadataValue(file, "Sub Lot Number") || metadataValue(file, "Lot Number");
+        const customerLot = metadataValue(file, "Cust LotID") || metadataValue(file, "CUSTOMER_LOTID");
+        const product = metadataValue(file, "Product") || metadataValue(file, "Product Model") || metadataValue(file, "Device");
+        const lotMatch = row.lot && normalizedIdentity(lot) === normalizedIdentity(row.lot);
+        const productMatch = !row.product || !product || normalizedIdentity(product) === normalizedIdentity(row.product);
+        const customerLotMatch = !row.customerLot || !customerLot || normalizedIdentity(customerLot) === normalizedIdentity(row.customerLot);
+        return lotMatch && productMatch && customerLotMatch;
+      });
+      return { row, files: matches };
+    });
+  }
+
+  function analyzeProductionFlow(files, factoryReports = [], overrides = {}) {
+    const selectedFiles = sortFilesChronologically(files);
+    const roleGroups = { initial: [], retest: [], qa: [], disposition: [] };
+    selectedFiles.forEach((file) => {
+      const role = factoryFileRole(file);
+      if (roleGroups[role]) roleGroups[role].push(file);
+    });
+    const rowMatches = matchFactoryRows(selectedFiles, factoryReports);
+    const anchorByFile = new Map();
+    rowMatches.forEach((match) => {
+      if (match.files.length !== 1) return;
+      const file = match.files[0];
+      if (!anchorByFile.has(file.id)) anchorByFile.set(file.id, []);
+      anchorByFile.get(file.id).push(match.row);
+    });
+
+    const ranges = roleGroups.initial.map((file) => {
+      const anchors = anchorByFile.get(file.id) || [];
+      const anchorInput = anchors.length === 1 ? Math.max(0, Math.round(anchors[0].input)) : null;
+      const override = overrides[file.id] || {};
+      let includeCount = anchorInput !== null && anchorInput <= file.records.length ? anchorInput : file.records.length;
+      let startIndex = Math.max(0, file.records.length - includeCount);
+      let source = anchorInput !== null && anchorInput <= file.records.length ? "factory-anchor" : "all-initial";
+      let confidence = source === "factory-anchor" ? "high" : "low";
+      if (Number.isFinite(Number(override.startSequence))) {
+        startIndex = Math.max(0, Math.min(file.records.length, Math.round(Number(override.startSequence)) - 1));
+        includeCount = file.records.length - startIndex;
+        source = "manual";
+        confidence = "confirmed";
+      }
+      const records = file.records.slice(startIndex);
+      return {
+        file,
+        startSequence: startIndex + 1,
+        excluded: startIndex,
+        included: records.length,
+        records,
+        source,
+        confidence,
+        anchor: anchors[0] || null,
+      };
+    });
+    const productionInitial = classifyFactoryRecords(ranges.flatMap((range) => range.records));
+    const rawInitial = classifyFactoryRecords(roleGroups.initial.flatMap((file) => file.records || []));
+    const retest = classifyFactoryRecords(roleGroups.retest.flatMap((file) => file.records || []));
+    const disposition = classifyFactoryRecords(roleGroups.disposition.flatMap((file) => file.records || []));
+    const qa = classifyFactoryRecords(roleGroups.qa.flatMap((file) => file.records || []));
+    const matchedRows = rowMatches.filter((match) => match.files.length === 1).map((match) => match.row);
+    const factory = matchedRows.length ? {
+      input: matchedRows.reduce((sum, row) => sum + row.input, 0),
+      output: matchedRows.reduce((sum, row) => sum + row.output, 0),
+      appearance: matchedRows.reduce((sum, row) => sum + row.appearance, 0),
+      electrical: matchedRows.reduce((sum, row) => sum + row.electrical, 0),
+      openShort: matchedRows.reduce((sum, row) => sum + row.openShort, 0),
+      yield: null,
+      rows: matchedRows,
+    } : null;
+    if (factory) factory.yield = factory.input ? factory.output / factory.input : null;
+    const inferredRecovered = factory
+      ? Math.max(0, factory.output - productionInitial.mainPass)
+      : null;
+    const inferredFinalFail = factory
+      ? Math.max(0, factory.input - factory.output)
+      : null;
+    const maxRecoverable = productionInitial.nonMain;
+    const estimatedFinalOutput = factory ? factory.output : productionInitial.mainPass;
+    const estimatedFinalYield = factory ? factory.yield : productionInitial.yield;
+    const confidence = factory && matchedRows.length === roleGroups.initial.length ? "high"
+      : ranges.some((range) => range.confidence === "confirmed") ? "medium"
+        : "low";
+    const warnings = [];
+    if (!factory) warnings.push("未载入或未匹配工厂良率表；正式生产起点与最终良率只能作为低置信度估算。");
+    if (factory && inferredRecovered > maxRecoverable) warnings.push("工厂产出高于初测通过与可恢复不良之和，请检查批次匹配或投入范围。");
+    if (retest.total && !factory) warnings.push("存在复测记录但缺少稳定唯一产品 ID；只能显示恢复上限，不能自动逐颗覆盖。");
+    if (ranges.some((range) => range.source === "factory-anchor" && range.excluded > 0)) warnings.push("正式生产区间按工厂投入从初测文件尾部反推，已标记为高置信度锚定但仍可人工调整。");
+    return {
+      roles: roleGroups,
+      ranges,
+      rawInitial,
+      productionInitial,
+      retest,
+      disposition,
+      qa,
+      factory,
+      inferredRecovered,
+      inferredFinalFail,
+      maxRecoverable,
+      estimatedFinalOutput,
+      estimatedFinalYield,
+      confidence,
+      warnings,
+      unmatchedFactoryRows: rowMatches.filter((match) => match.files.length !== 1),
+    };
+  }
+
   function analyze(files, filterId = "all") {
     const selectedFiles = selectFiles(files, filterId);
     const records = selectedFiles.flatMap((file) => file.records);
@@ -2030,6 +2267,7 @@
     aggregateSummaryReports,
     analyze,
     analyzeFactory,
+    analyzeProductionFlow,
     auditSummaryReports,
     clean,
     extractCsvEntriesFromZip,
@@ -2041,6 +2279,7 @@
     parameterSeries,
     parseCsv,
     parseFtFileText,
+    parseFactoryYieldWorkbook,
     parseSummaryReportText,
     simulateLimitYield,
     sortFilesChronologically,

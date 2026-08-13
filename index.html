@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>FT 数据分析工作台</title>
-  <link rel="stylesheet" href="styles.css?v=1.40.0">
-  <script src="ft-core.js?v=1.40.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.41.0">
+  <script src="ft-core.js?v=1.41.0" defer></script>
   <script src="sevenzip-loader.js?v=1.21.0" defer></script>
-  <script src="app.js?v=1.40.0" defer></script>
+  <script src="app.js?v=1.41.0" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -22,12 +22,12 @@
 
   <main>
     <section id="dropZone" class="drop-zone" aria-label="FT 数据文件导入区">
-      <input id="fileInput" type="file" accept=".csv,.zip,.7z,.rar,text/csv,application/zip,application/x-7z-compressed,application/vnd.rar,application/x-rar-compressed" multiple hidden>
+      <input id="fileInput" type="file" accept=".csv,.xlsx,.zip,.7z,.rar,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-7z-compressed,application/vnd.rar,application/x-rar-compressed" multiple hidden>
       <div class="drop-icon" aria-hidden="true">DATA</div>
       <div>
-        <h2>将 CSV、ZIP、7z 或 RAR 压缩包拖到这里</h2>
+        <h2>将测试 CSV、工厂良率 XLSX 或压缩包拖到这里</h2>
       </div>
-      <button id="browseButton" class="primary-button" type="button">选择 CSV / ZIP / 7z / RAR</button>
+      <button id="browseButton" class="primary-button" type="button">选择 CSV / XLSX / 压缩包</button>
     </section>
 
     <div id="message" class="message" role="status" aria-live="polite"></div>
@@ -45,7 +45,8 @@
             <span>统计口径</span>
             <select id="analysisMode">
               <option value="events">测试事件口径</option>
-              <option value="factory">工厂口径（估算）</option>
+              <option value="initial">正式初测口径</option>
+              <option value="factory">工厂最终口径</option>
             </select>
           </label>
         </div>
@@ -71,12 +72,27 @@
         <article id="factoryPanel" class="panel factory-panel" hidden>
           <div class="panel-header responsive-header">
             <div>
-              <h2>工厂口径对账</h2>
-              <p>按文件角色与 Hard Bin 估算投入、主产品产出和损失构成；不会把复测事件重复计入投入。</p>
+              <h2>生产口径与工厂对账</h2>
+              <p>正式生产区间、复测事件与工厂最终结果分开统计；没有可靠锚点时明确显示估算和置信度。</p>
             </div>
-            <span id="factoryStatus" class="badge watch">估算口径</span>
+            <span id="factoryStatus" class="badge watch">待确认</span>
           </div>
+          <div id="factoryAnchorSummary" class="factory-anchor-summary"></div>
           <div id="factoryMetrics" class="factory-audit-grid"></div>
+          <section class="factory-range-section">
+            <div class="factory-range-heading">
+              <div>
+                <h3>正式生产区间</h3>
+                <p>优先用工厂“测试投入”从初测文件尾部反推；也可人工填写正式生产起始序号。</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="factory-range-table">
+                <thead><tr><th>初测文件</th><th>原始记录</th><th>正式起始序号</th><th>排除工程记录</th><th>正式投入</th><th>依据 / 置信度</th><th>操作</th></tr></thead>
+                <tbody id="factoryRangeTableBody"></tbody>
+              </table>
+            </div>
+          </section>
           <div id="factoryWarnings" class="factory-warning-list"></div>
         </article>
 
@@ -432,7 +448,7 @@
 
   <footer>
     <span>本地离线分析 · 不上传测试数据</span>
-    <span id="versionText">v1.40</span>
+    <span id="versionText">v1.41</span>
   </footer>
 </body>
 </html>
