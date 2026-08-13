@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.39",
+      version: "v1.40",
       current: true,
+      title: "工厂良率估算与文件角色审计",
+      changes: [
+        "新增测试事件口径与工厂口径（估算）切换；工厂口径以初测文件作为有效投入，以 HBin1 作为主产品产出。",
+        "将 HBin8、电性、O/S、其他处置、复测与 QA 分开列示，复测和 QA 不再重复计入初测投入。",
+        "新增数据闭合、复测身份限制与文件角色提示，并在导出结果中附带工厂口径审计明细。"
+      ],
+    },
+    {
+      version: "v1.39",
+      current: false,
       title: "Pareto 联动单项分析卡",
       changes: [
         "用 Pareto 联动的单项分析卡替换总览底部 Fail 长表，集中展示 Fail 构成、批次影响与偏低/偏高方向。",
@@ -227,6 +237,8 @@
     summaryReports: [],
     filterId: "all",
     analysis: null,
+    analysisMode: "events",
+    factoryAnalysis: null,
     summaryAggregate: null,
     activeTab: "overview",
     selectedTest: "",
@@ -247,7 +259,7 @@
 
   const el = {};
   const ids = [
-    "dropZone", "fileInput", "browseButton", "message", "workspace", "fileFilter",
+    "dropZone", "fileInput", "browseButton", "message", "workspace", "fileFilter", "analysisMode",
     "exportButton", "addFilesButton", "clearButton", "summaryCards", "paretoChart",
     "yieldChart", "yieldTrendHint", "failFocusContent", "testItemSelect", "selectedTestStats",
     "parameterChart", "stabilitySearch", "stabilityTableBody", "failReasonFilter",
@@ -258,6 +270,7 @@
     "simulatedLowerInput", "simulatedUpperInput", "resetLimitsButton", "yieldSimulation",
     "rangeModeButton", "summaryReportPanel", "summaryReportHint", "summaryReportStatus",
     "summaryReportMetrics", "summaryReportTableBody", "summaryBinTableBody", "summaryFailTableBody", "releaseLog",
+    "factoryPanel", "factoryStatus", "factoryMetrics", "factoryWarnings",
   ];
   ids.forEach((id) => { el[id] = document.getElementById(id); });
 
@@ -299,6 +312,10 @@
       state.selectedDistributionReason = "";
       state.distributionLimits.clear();
       state.detailPage = 1;
+      analyzeAndRender();
+    });
+    el.analysisMode.addEventListener("change", () => {
+      state.analysisMode = el.analysisMode.value === "factory" ? "factory" : "events";
       analyzeAndRender();
     });
     el.testItemSelect.addEventListener("change", () => {
@@ -562,7 +579,12 @@
   function analyzeAndRender() {
     const summaryFilterId = state.filterId.startsWith("summary:") ? state.filterId.slice(8) : "";
     const detailFilterId = summaryFilterId ? "__summary_only__" : state.filterId;
+    el.analysisMode.disabled = Boolean(summaryFilterId);
+    el.analysisMode.title = summaryFilterId ? "Summary 使用报告自身口径独立查看" : "";
     state.analysis = Core.analyze(state.files, detailFilterId);
+    state.factoryAnalysis = summaryFilterId
+      ? null
+      : Core.analyzeFactory?.(state.files, detailFilterId) || null;
     const reports = summaryFilterId
       ? state.summaryReports.filter((report) => report.id === summaryFilterId)
       : [];
@@ -573,6 +595,7 @@
     el.workspace.hidden = false;
     updateTabAvailability();
     renderSummary();
+    renderFactoryPanel();
     renderSummaryReports();
     renderFailOverview();
     renderFailDistribution();
@@ -598,6 +621,10 @@
   function renderSummary() {
     const a = state.analysis;
     const summaryOnly = !a.total && Boolean(state.summaryAggregate?.reports.length);
+    if (state.analysisMode === "factory" && !summaryOnly && state.factoryAnalysis) {
+      renderFactorySummaryCards(a, state.factoryAnalysis);
+      return;
+    }
     const source = summaryOnly ? state.summaryAggregate : a;
     const failStats = summaryOnly ? state.summaryAggregate.failStats : a.failStats;
     const topFail = failStats[0];
@@ -657,6 +684,57 @@
         <div class="value">${card.value}</div>
         <div class="context">${card.context}</div>
       </article>`).join("");
+  }
+
+  function renderFactorySummaryCards(analysis, factory) {
+    const product = productSummary(false, analysis);
+    const initial = factory.initial;
+    const yieldText = factory.yield === null ? "—" : formatPercent(factory.yield);
+    const cards = [
+      { label: "产品名称", value: escapeHtml(product.value), context: product.context, className: "product", title: product.title },
+      { label: "有效投入（估算）", value: formatInteger(factory.effectiveInput), context: `${factory.roles.initial.length} 个初测 CSV`, className: "" },
+      { label: "主产品产出", value: formatInteger(factory.mainOutput), context: "HBin1", className: "pass" },
+      { label: "工厂良率（估算）", value: yieldText, context: "HBin1 ÷ 初测投入", className: factory.yield !== null && factory.yield >= 0.95 ? "pass" : "fail" },
+      { label: "HBin8", value: formatInteger(initial.hbin8), context: initial.total ? formatPercent(initial.hbin8 / initial.total) : "—", className: "uph" },
+      { label: "电性", value: formatInteger(initial.electrical), context: `HBin3 · ${initial.total ? formatPercent(initial.electrical / initial.total) : "—"}`, className: "fail" },
+      { label: "O/S", value: formatInteger(initial.openShort), context: `HBin5 · ${initial.total ? formatPercent(initial.openShort / initial.total) : "—"}`, className: "fail" },
+      { label: "其他处置", value: formatInteger(initial.other), context: initial.total ? formatPercent(initial.other / initial.total) : "—", className: "top-fail" },
+    ];
+    el.summaryCards.innerHTML = cards.map((card) => `
+      <article class="summary-card ${card.className}"${card.title ? ` title="${escapeHtml(card.title)}"` : ""}>
+        <div class="label">${card.label}</div>
+        <div class="value">${card.value}</div>
+        <div class="context">${card.context}</div>
+      </article>`).join("");
+  }
+
+  function renderFactoryPanel() {
+    const factory = state.factoryAnalysis;
+    const summaryOnly = !state.analysis?.total && Boolean(state.summaryAggregate?.reports.length);
+    const visible = state.analysisMode === "factory" && !summaryOnly && Boolean(factory);
+    el.factoryPanel.hidden = !visible;
+    if (!visible) return;
+
+    const closureDifference = factory.effectiveInput - factory.closureTotal;
+    el.factoryStatus.className = `badge ${factory.closed ? "pass" : "fail"}`;
+    el.factoryStatus.textContent = factory.closed ? "内部闭合 · 估算" : "存在未闭合数据";
+    const metrics = [
+      ["有效投入来源", factory.effectiveInputSource],
+      ["初测文件", `${formatInteger(factory.roles.initial.length)} 个`],
+      ["初测分类闭合", factory.closed ? `${formatInteger(factory.closureTotal)} / ${formatInteger(factory.effectiveInput)}` : `相差 ${formatInteger(closureDifference)}`],
+      ["复测事件", `${formatInteger(factory.retest.total)} 条 · 不覆盖初测`],
+      ["QA 验证", `${formatInteger(factory.qa.total)} 条 · 已排除`],
+      ["处置 / BIN 文件", `${formatInteger(factory.disposition.total)} 条 · 待确认规则`],
+    ];
+    el.factoryMetrics.innerHTML = metrics.map(([label, value]) => `
+      <div class="factory-audit-item">
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+      </div>`).join("");
+    el.factoryWarnings.innerHTML = `
+      <strong>口径说明</strong>
+      <ul>${factory.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>
+      <p>下方 Pareto、趋势和 Fail 明细仍用于查看测试事件；工厂口径只改变总览计数与导出审计，不伪造逐颗复测合并结果。</p>`;
   }
 
   function productSummary(summaryOnly, analysis) {
@@ -1273,12 +1351,21 @@
   function renderFiles() {
     if (!state.analysis) return;
     const summaries = currentFileSummaries();
-    el.fileTableBody.innerHTML = summaries.length ? summaries.map((item) => `
+    const sourceMap = new Map([
+      ...state.files.map((file) => [file.id, file]),
+      ...state.summaryReports.map((report) => [report.id, report]),
+    ]);
+    el.fileTableBody.innerHTML = summaries.length ? summaries.map((item) => {
+      const role = Core.factoryFileRole?.(sourceMap.get(item.id) || item) || (item.kind === "summary" ? "summary" : "initial");
+      const roleInfo = factoryRolePresentation(role);
+      return `
       <tr class="${item.kind === "summary" ? "" : "clickable-row file-analysis-row"}"
           ${item.kind === "summary" ? "" : `data-analysis-file-id="${escapeHtml(item.id)}"`}
           title="${item.kind === "summary" ? "Summary 汇总报告不含逐颗实测值" : "点击进入该 CSV 的 Fail 分布"}">
         <td><span class="badge ${item.isRetest ? "retest" : "unknown"}">${escapeHtml(item.stage)}</span></td>
         <td><span class="badge ${item.kind === "summary" ? "watch" : item.isRetest ? "retest" : "unknown"}">${escapeHtml(item.testType)}</span></td>
+        <td><span class="badge ${roleInfo.badge}">${escapeHtml(roleInfo.label)}</span></td>
+        <td>${escapeHtml(roleInfo.treatment)}</td>
         <td>${escapeHtml(item.fileTimeLabel || "—")}</td>
         <td><span class="badge ${item.kind === "summary" ? "watch" : "unknown"}">${escapeHtml(item.format)}</span></td>
         <td><span class="truncate" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span></td>
@@ -1290,7 +1377,19 @@
         <td><span class="badge ${item.yield >= 0.95 ? "pass" : item.yield >= 0.8 ? "watch" : "fail"}">${formatPercent(item.yield)}</span></td>
         <td>${escapeHtml(item.topFail)}</td>
         <td><button class="remove-file-button" type="button" data-remove-id="${escapeHtml(item.id)}">移除</button></td>
-      </tr>`).join("") : `<tr><td colspan="13" class="empty-state">没有已载入文件</td></tr>`;
+      </tr>`;
+    }).join("") : `<tr><td colspan="15" class="empty-state">没有已载入文件</td></tr>`;
+  }
+
+  function factoryRolePresentation(role) {
+    const roles = {
+      initial: { label: "初测", treatment: "计入有效投入", badge: "unknown" },
+      retest: { label: "复测", treatment: "单独列示，暂不覆盖", badge: "retest" },
+      qa: { label: "QA 验证", treatment: "工厂口径排除", badge: "watch" },
+      disposition: { label: "处置 / BIN", treatment: "待确认流程规则", badge: "watch" },
+      summary: { label: "Summary", treatment: "独立查看，不自动并入", badge: "watch" },
+    };
+    return roles[role] || roles.initial;
   }
 
   function currentFileSummaries() {
@@ -1350,6 +1449,7 @@
     state.files = [];
     state.summaryReports = [];
     state.analysis = null;
+    state.factoryAnalysis = null;
     state.summaryAggregate = null;
     state.filterId = "all";
     state.selectedTest = "";
@@ -1418,7 +1518,21 @@
       : "";
     rows.push(["分析范围", state.filterId === "all" ? "全部明细 CSV 汇总" : selectedSummary || a.selectedFiles[0]?.name || ""]);
     rows.push(["数据来源", summaryOnly ? "Summary 汇总报告（不含逐颗实测值）" : "逐颗明细 CSV"]);
-    rows.push(["测试记录", source.total, "Pass", source.pass, "Fail", source.fail, "良率", (source.yield * 100).toFixed(3) + "%"]);
+    const factoryMode = state.analysisMode === "factory" && !summaryOnly && Boolean(state.factoryAnalysis);
+    rows.push(["统计口径", factoryMode ? "工厂口径（估算）" : "测试事件口径"]);
+    if (factoryMode) {
+      const f = state.factoryAnalysis;
+      rows.push([]);
+      rows.push(["工厂口径对账（估算）"]);
+      rows.push(["有效投入", f.effectiveInput, "投入来源", f.effectiveInputSource, "主产品产出(HBin1)", f.mainOutput, "工厂良率", f.yield === null ? "" : (f.yield * 100).toFixed(3) + "%"]);
+      rows.push(["HBin8", f.initial.hbin8, "电性(HBin3)", f.initial.electrical, "O/S(HBin5)", f.initial.openShort, "其他处置", f.initial.other]);
+      rows.push(["分类合计", f.closureTotal, "初测投入", f.effectiveInput, "内部闭合", f.closed ? "是" : "否"]);
+      rows.push(["复测事件（不覆盖初测）", f.retest.total, "QA 验证（已排除）", f.qa.total, "处置/BIN 文件（待确认）", f.disposition.total]);
+      f.warnings.forEach((warning) => rows.push(["口径提示", warning]));
+      rows.push([]);
+      rows.push(["测试事件参考"]);
+    }
+    rows.push([factoryMode ? "测试事件记录" : "测试记录", source.total, "Pass", source.pass, "Fail", source.fail, "良率", (source.yield * 100).toFixed(3) + "%"]);
     rows.push([
       "单颗测试时间(ms)", rawNumber(source.testTimeMs),
       "Index 时间(ms)", source.indexTimeMs,
@@ -1452,6 +1566,19 @@
       state.summaryAggregate.bins.forEach((item) => rows.push([
         item.sbin, item.hbin, item.description, item.count, (item.share * 100).toFixed(3) + "%",
       ]));
+    }
+    if (factoryMode) {
+      rows.push([]);
+      rows.push(["文件角色审计"]);
+      rows.push(["文件", "阶段", "角色", "工厂口径处理", "记录数", "测试事件 Pass", "测试事件 Fail", "测试事件良率"]);
+      state.analysis.fileSummaries.forEach((item) => {
+        const sourceFile = fileMap.get(item.id);
+        const roleInfo = factoryRolePresentation(Core.factoryFileRole?.(sourceFile) || "initial");
+        rows.push([
+          item.name, item.stage, roleInfo.label, roleInfo.treatment, item.total, item.pass, item.fail,
+          (item.yield * 100).toFixed(3) + "%",
+        ]);
+      });
     }
     rows.push([]);
     rows.push(["Fail 项汇总"]);

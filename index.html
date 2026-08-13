@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>FT 数据分析工作台</title>
-  <link rel="stylesheet" href="styles.css?v=1.39.0">
-  <script src="ft-core.js?v=1.39.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.40.0">
+  <script src="ft-core.js?v=1.40.0" defer></script>
   <script src="sevenzip-loader.js?v=1.21.0" defer></script>
-  <script src="app.js?v=1.39.0" defer></script>
+  <script src="app.js?v=1.40.0" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -34,12 +34,21 @@
 
     <section id="workspace" class="workspace" hidden>
       <div class="toolbar">
-        <label>
-          <span>分析范围</span>
-          <select id="fileFilter">
-            <option value="all">全部明细 CSV 汇总</option>
-          </select>
-        </label>
+        <div class="toolbar-fields">
+          <label>
+            <span>分析范围</span>
+            <select id="fileFilter">
+              <option value="all">全部明细 CSV 汇总</option>
+            </select>
+          </label>
+          <label>
+            <span>统计口径</span>
+            <select id="analysisMode">
+              <option value="events">测试事件口径</option>
+              <option value="factory">工厂口径（估算）</option>
+            </select>
+          </label>
+        </div>
         <div class="toolbar-actions">
           <button id="exportButton" class="secondary-button" type="button">导出分析结果</button>
           <button id="addFilesButton" class="secondary-button" type="button">继续添加</button>
@@ -58,6 +67,18 @@
 
       <section id="overviewPanel" class="tab-panel">
         <div id="summaryCards" class="summary-grid"></div>
+
+        <article id="factoryPanel" class="panel factory-panel" hidden>
+          <div class="panel-header responsive-header">
+            <div>
+              <h2>工厂口径对账</h2>
+              <p>按文件角色与 Hard Bin 估算投入、主产品产出和损失构成；不会把复测事件重复计入投入。</p>
+            </div>
+            <span id="factoryStatus" class="badge watch">估算口径</span>
+          </div>
+          <div id="factoryMetrics" class="factory-audit-grid"></div>
+          <div id="factoryWarnings" class="factory-warning-list"></div>
+        </article>
 
         <article id="summaryReportPanel" class="panel summary-report-panel" hidden>
           <div class="panel-header responsive-header">
@@ -361,6 +382,8 @@
                 <tr>
                   <th>阶段</th>
                   <th>类型</th>
+                  <th>文件角色</th>
+                  <th>工厂口径处理</th>
                   <th>文件名时间</th>
                   <th>格式</th>
                   <th>文件</th>
@@ -409,7 +432,7 @@
 
   <footer>
     <span>本地离线分析 · 不上传测试数据</span>
-    <span id="versionText">v1.39</span>
+    <span id="versionText">v1.40</span>
   </footer>
 </body>
 </html>

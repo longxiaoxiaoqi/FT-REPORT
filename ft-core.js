@@ -1755,6 +1755,95 @@
     };
   }
 
+  function factoryFileRole(file) {
+    if (file?.kind === "summary" || file?.format === "Summary") return "summary";
+    const name = String(file?.name || "").replace(/\\/g, "/").split("/").pop() || "";
+    if (/(?:^|[_.-])QA(?:[_.-]|$)/i.test(name)) return "qa";
+    if (file?.isRetest || String(file?.stage || "").toUpperCase().startsWith("RT")) return "retest";
+    if (/(?:^|[_.-])BIN\d+(?:[_.-]|$)/i.test(name)) return "disposition";
+    return "initial";
+  }
+
+  function factoryRecordCategory(record) {
+    const hbin = clean(record?.hbin);
+    if (hbin === "1") return "mainPass";
+    if (hbin === "8") return "hbin8";
+    if (hbin === "3") return "electrical";
+    if (hbin === "5") return "openShort";
+    if (hbin) return "other";
+    return record?.isPass ? "mainPass" : "other";
+  }
+
+  function classifyFactoryRecords(records) {
+    const result = {
+      total: records.length,
+      mainPass: 0,
+      hbin8: 0,
+      electrical: 0,
+      openShort: 0,
+      other: 0,
+      missingHbin: 0,
+    };
+    records.forEach((record) => {
+      if (!clean(record?.hbin)) result.missingHbin += 1;
+      result[factoryRecordCategory(record)] += 1;
+    });
+    result.nonMain = result.total - result.mainPass;
+    result.yield = result.total ? result.mainPass / result.total : null;
+    result.closed = result.total === result.mainPass + result.hbin8
+      + result.electrical + result.openShort + result.other;
+    return result;
+  }
+
+  function analyzeFactory(files, filterId = "all") {
+    const selectedFiles = selectFiles(files, filterId);
+    const roleGroups = {
+      initial: [],
+      retest: [],
+      qa: [],
+      disposition: [],
+    };
+    selectedFiles.forEach((file) => {
+      const role = factoryFileRole(file);
+      if (roleGroups[role]) roleGroups[role].push(file);
+    });
+    const recordsFor = (items) => items.flatMap((file) => file.records || []);
+    const initial = classifyFactoryRecords(recordsFor(roleGroups.initial));
+    const retest = classifyFactoryRecords(recordsFor(roleGroups.retest));
+    const disposition = classifyFactoryRecords(recordsFor(roleGroups.disposition));
+    const qa = classifyFactoryRecords(recordsFor(roleGroups.qa));
+    const includedFiles = [...roleGroups.initial];
+    const excludedFiles = [...roleGroups.qa];
+    const warnings = [];
+
+    if (!initial.total) warnings.push("当前范围没有可作为有效投入的初测 CSV。工厂良率暂不可计算。");
+    if (retest.total) warnings.push(`发现 ${retest.total.toLocaleString("zh-CN")} 条复测事件；缺少跨文件唯一产品 ID，暂不自动覆盖初测结果。`);
+    if (disposition.total) warnings.push(`发现 ${disposition.total.toLocaleString("zh-CN")} 条最终处置 / BIN 文件记录；需确认流程规则后才能并入最终结果。`);
+    if (qa.total) warnings.push(`已从工厂口径排除 ${qa.total.toLocaleString("zh-CN")} 条 QA 验证记录。`);
+    if (initial.missingHbin) warnings.push(`初测中有 ${initial.missingHbin.toLocaleString("zh-CN")} 条记录没有 HBin，已按原 Pass/Fail 兼容归类。`);
+    warnings.push("当前有效投入取初测 CSV 记录数，属于估算口径；如与 MES / 工厂投入不一致，应以工厂投入为准。");
+
+    return {
+      selectedFiles,
+      roles: roleGroups,
+      includedFiles,
+      excludedFiles,
+      initial,
+      retest,
+      disposition,
+      qa,
+      effectiveInput: initial.total,
+      effectiveInputSource: "初测 CSV 记录数（估算）",
+      mainOutput: initial.mainPass,
+      yield: initial.yield,
+      closureTotal: initial.mainPass + initial.hbin8 + initial.electrical + initial.openShort + initial.other,
+      closed: initial.closed,
+      isEstimated: true,
+      canFinalizeRetest: false,
+      warnings,
+    };
+  }
+
   function analyze(files, filterId = "all") {
     const selectedFiles = selectFiles(files, filterId);
     const records = selectedFiles.flatMap((file) => file.records);
@@ -1940,10 +2029,12 @@
   return {
     aggregateSummaryReports,
     analyze,
+    analyzeFactory,
     auditSummaryReports,
     clean,
     extractCsvEntriesFromZip,
     finiteNumber,
+    factoryFileRole,
     isSummaryReportText,
     metadataValue,
     parameterDistribution,
