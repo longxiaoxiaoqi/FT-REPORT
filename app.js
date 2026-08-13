@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.41",
+      version: "v1.42",
       current: true,
+      title: "Fail 分布与 Pass 稳定性测试项联动",
+      changes: [
+        "Fail 分布与 Pass 稳定性共用当前测试项：任一界面切换项目后，另一界面同步选中同名项目。",
+        "点击 Pass 稳定性表格行、使用稳定性下拉框或 Fail 分布测试项列表时，均通过同一联动入口更新。",
+        "切换分析文件后会重新校验项目是否存在；仅在目标界面没有同名项目时才使用该界面的首个可用项目。"
+      ],
+    },
+    {
+      version: "v1.41",
+      current: false,
       title: "三种良率口径与工厂报告锚定",
       changes: [
         "将测试事件、正式初测和工厂最终三种统计口径分开，避免把工程调试、QA 与复测事件重复计入工厂良率。",
@@ -320,6 +330,7 @@
 
     el.fileFilter.addEventListener("change", () => {
       state.filterId = el.fileFilter.value;
+      state.selectedTest = "";
       state.selectedOverviewFailReason = "";
       state.selectedFailReason = "all";
       state.selectedDistributionReason = "";
@@ -333,7 +344,8 @@
       analyzeAndRender();
     });
     el.testItemSelect.addEventListener("change", () => {
-      state.selectedTest = el.testItemSelect.value;
+      setCurrentTestItem(el.testItemSelect.value);
+      renderStabilityTable();
       renderSelectedTest();
     });
     el.failReasonFilter.addEventListener("change", () => {
@@ -381,7 +393,7 @@
     el.stabilityTableBody.addEventListener("click", (event) => {
       const row = event.target.closest("tr[data-test]");
       if (!row) return;
-      state.selectedTest = row.dataset.test;
+      setCurrentTestItem(row.dataset.test);
       switchTab("stability");
       updateTestSelect();
       renderSelectedTest();
@@ -565,6 +577,7 @@
       state.files = Core.sortFilesChronologically(state.files);
       state.summaryReports = Core.sortFilesChronologically(state.summaryReports);
       state.filterId = "all";
+      state.selectedTest = "";
       state.selectedOverviewFailReason = "";
       state.selectedFailReason = "all";
       state.selectedDistributionReason = "";
@@ -1084,7 +1097,9 @@
     const reasons = state.analysis.failStats;
     const testNames = distributionTestNames();
     if (!testNames.includes(state.selectedDistributionReason)) {
-      state.selectedDistributionReason = reasons[0]?.reason || testNames[0] || "";
+      const preferred = testNames.includes(state.selectedTest) ? state.selectedTest : "";
+      const fallback = preferred || reasons[0]?.reason || testNames[0] || "";
+      if (fallback) setCurrentTestItem(fallback);
     }
     updateDistributionTestSelect(testNames);
     renderDistributionFailList();
@@ -1221,7 +1236,7 @@
   }
 
   function selectDistributionReason(reason) {
-    state.selectedDistributionReason = reason;
+    setCurrentTestItem(reason);
     setDistributionPickerOpen(false);
     syncDistributionPickerSelection();
     renderDistributionFailList();
@@ -1361,9 +1376,22 @@
 
   function updateTestSelect() {
     const items = state.analysis?.stability || [];
-    if (!items.some((item) => item.name === state.selectedTest)) state.selectedTest = items[0]?.name || "";
+    if (!items.some((item) => item.name === state.selectedTest)) {
+      const preferred = items.some((item) => item.name === state.selectedDistributionReason)
+        ? state.selectedDistributionReason : "";
+      const fallback = preferred || items[0]?.name || "";
+      if (fallback) setCurrentTestItem(fallback);
+      else state.selectedTest = "";
+    }
     el.testItemSelect.innerHTML = items.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("");
     el.testItemSelect.value = state.selectedTest;
+  }
+
+  function setCurrentTestItem(name) {
+    const selected = String(name || "");
+    if (!selected) return;
+    state.selectedTest = selected;
+    state.selectedDistributionReason = selected;
   }
 
   function renderStabilityTable() {
@@ -1375,7 +1403,7 @@
       return;
     }
     el.stabilityTableBody.innerHTML = rows.map((item) => `
-      <tr class="clickable-row" data-test="${escapeHtml(item.name)}">
+      <tr class="clickable-row${item.name === state.selectedTest ? " is-selected" : ""}" data-test="${escapeHtml(item.name)}" aria-selected="${item.name === state.selectedTest}">
         <td><strong>${escapeHtml(item.name)}</strong></td>
         <td>${statusBadge(item.status)}</td>
         <td>${formatInteger(item.n)}</td>
@@ -1538,6 +1566,7 @@
   function openFileDistribution(fileId) {
     if (!state.files.some((file) => file.id === fileId)) return;
     state.filterId = fileId;
+    state.selectedTest = "";
     state.selectedOverviewFailReason = "";
     state.selectedFailReason = "all";
     state.selectedDistributionReason = "";
@@ -1609,11 +1638,20 @@
     document.querySelectorAll(".tab-panel").forEach((panel) => { panel.hidden = true; });
     const target = document.getElementById(`${tabName}Panel`);
     if (target) target.hidden = false;
+    if (tabName === "distribution") {
+      updateDistributionTestSelect();
+      renderDistributionFailList();
+      renderSelectedDistribution();
+    } else if (tabName === "stability") {
+      updateTestSelect();
+      renderStabilityTable();
+      renderSelectedTest();
+    }
     requestAnimationFrame(drawVisibleCharts);
   }
 
   function openFailDistribution(reason) {
-    state.selectedDistributionReason = reason;
+    setCurrentTestItem(reason);
     switchTab("distribution");
     updateDistributionTestSelect();
     renderDistributionFailList();
