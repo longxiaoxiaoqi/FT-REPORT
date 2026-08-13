@@ -5,8 +5,28 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.45",
+      version: "v1.47",
       current: true,
+      title: "数据质量与口径审计",
+      changes: [
+        "新增独立数据审计页，汇总缺失字段、疑似重复标识、规格冲突与 Fail 实测值缺失。",
+        "新增生产数量流转视图，分开显示原始初测、工程排除、正式投入、复测事件及工厂最终结果。",
+        "新增文件角色与判定依据表，并解释软件初测良率与工厂最终良率之间的差异。"
+      ],
+    },
+    {
+      version: "v1.46",
+      current: false,
+      title: "文件夹递归拖入",
+      changes: [
+        "支持将整个文件夹拖入导入区，自动递归读取所有子目录。",
+        "文件夹中的 CSV、工厂良率 XLSX、ZIP、7z 与 RAR 会继续沿用现有解析流程。",
+        "保留文件夹相对路径，避免不同子目录中的同名文件被混淆；其他文件类型自动忽略。"
+      ],
+    },
+    {
+      version: "v1.45",
+      current: false,
       title: "GitHub 问题与反馈入口",
       changes: [
         "在更新日志标题栏增加简洁的“问题与反馈”按钮，可直接打开项目 GitHub 仓库。",
@@ -325,6 +345,8 @@
     "rangeModeButton", "summaryReportPanel", "summaryReportHint", "summaryReportStatus",
     "summaryReportMetrics", "summaryReportTableBody", "summaryBinTableBody", "summaryFailTableBody", "releaseLog",
     "factoryPanel", "factoryStatus", "factoryAnchorSummary", "factoryMetrics", "factoryRangeTableBody", "factoryWarnings",
+    "dataAuditStatus", "dataAuditMetrics", "dataAuditFlow", "dataAuditIssues",
+    "dataAuditRoleTableBody", "dataAuditSpecTableBody",
   ];
   ids.forEach((id) => { el[id] = document.getElementById(id); });
 
@@ -357,7 +379,14 @@
         el.dropZone.classList.remove("is-dragging");
       });
     });
-    el.dropZone.addEventListener("drop", (event) => handleFiles(Array.from(event.dataTransfer?.files || [])));
+    el.dropZone.addEventListener("drop", async (event) => {
+      try {
+        const files = await collectDroppedFiles(event.dataTransfer);
+        await handleFiles(files);
+      } catch (error) {
+        showMessage(`读取拖入内容失败：${error.message}`, "error");
+      }
+    });
 
     el.fileFilter.addEventListener("change", () => {
       state.filterId = el.fileFilter.value;
@@ -507,10 +536,92 @@
     requestAnimationFrame(drawVisibleCharts);
   }
 
+  async function collectDroppedFiles(dataTransfer) {
+    if (!dataTransfer) return [];
+    const items = Array.from(dataTransfer.items || []);
+    try {
+      const handlePromises = items
+        .filter((item) => item.kind === "file" && typeof item.getAsFileSystemHandle === "function")
+        .map((item) => item.getAsFileSystemHandle());
+      if (handlePromises.length) {
+        const handles = (await Promise.all(handlePromises)).filter(Boolean);
+        if (handles.length) {
+          showMessage("正在扫描拖入的文件与文件夹…");
+          const nestedFiles = await Promise.all(handles.map((handle) => readDroppedHandle(handle, "")));
+          return nestedFiles.flat();
+        }
+      }
+    } catch (_) { /* Fall back to the legacy directory-entry API below. */ }
+    const entryItems = items
+      .map((item) => item.kind === "file" && typeof item.webkitGetAsEntry === "function"
+        ? item.webkitGetAsEntry() : null)
+      .filter(Boolean);
+    if (entryItems.length) {
+      showMessage("正在扫描拖入的文件与文件夹…");
+      const nestedFiles = await Promise.all(entryItems.map((entry) => readDroppedEntry(entry, "")));
+      return nestedFiles.flat();
+    }
+    return Array.from(dataTransfer.files || []);
+  }
+
+  async function readDroppedHandle(handle, parentPath) {
+    if (!handle) return [];
+    const relativePath = [parentPath, handle.name].filter(Boolean).join("/");
+    if (handle.kind === "file") {
+      const file = await handle.getFile();
+      return [wrapDroppedFile(file, relativePath)];
+    }
+    if (handle.kind !== "directory") return [];
+    const nestedFiles = [];
+    for await (const child of handle.values()) {
+      nestedFiles.push(...await readDroppedHandle(child, relativePath));
+    }
+    return nestedFiles;
+  }
+
+  async function readDroppedEntry(entry, parentPath) {
+    if (!entry) return [];
+    const relativePath = [parentPath, entry.name].filter(Boolean).join("/");
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      return [wrapDroppedFile(file, relativePath)];
+    }
+    if (!entry.isDirectory) return [];
+    const reader = entry.createReader();
+    const children = [];
+    while (true) {
+      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      if (!batch.length) break;
+      children.push(...batch);
+    }
+    const nestedFiles = await Promise.all(children.map((child) => readDroppedEntry(child, relativePath)));
+    return nestedFiles.flat();
+  }
+
+  function wrapDroppedFile(file, relativePath) {
+    return {
+      name: relativePath || file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+      arrayBuffer: () => readBlobAsArrayBuffer(file),
+    };
+  }
+
+  function readBlobAsArrayBuffer(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => resolve(reader.result), { once: true });
+      reader.addEventListener("error", () => reject(reader.error || new Error("文件读取失败")), { once: true });
+      reader.addEventListener("abort", () => reject(new Error("文件读取已取消")), { once: true });
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
   async function handleFiles(files) {
     const sourceFiles = files.filter((file) => /\.(csv|xlsx|zip|7z|rar)$/i.test(file.name));
     if (!sourceFiles.length) {
-      showMessage("请选择或拖入 .csv、.xlsx、.zip、.7z 或 .rar 文件。", "error");
+      showMessage("请选择文件，或拖入包含 .csv、.xlsx、.zip、.7z、.rar 的文件夹。", "error");
       return;
     }
 
@@ -709,6 +820,7 @@
     renderStability();
     renderFailDetails();
     renderFiles();
+    renderDataAudit();
     renderReleaseLog();
     requestAnimationFrame(drawVisibleCharts);
   }
@@ -1595,6 +1707,177 @@
     const details = state.analysis?.fileSummaries || [];
     const reports = state.summaryReports.map((report) => Core.summarizeSummaryReport(report));
     return Core.sortFilesChronologically([...details, ...reports]);
+  }
+
+  function renderDataAudit() {
+    if (!state.analysis) return;
+    const files = state.analysis.selectedFiles || [];
+    const records = state.analysis.records || [];
+    const flow = state.productionFlow;
+    const roleRows = files.map((file) => buildAuditFileRow(file));
+    const missingSerial = roleRows.reduce((sum, row) => sum + row.missingSerial, 0);
+    const missingSbin = roleRows.reduce((sum, row) => sum + row.missingSbin, 0);
+    const missingHbin = roleRows.reduce((sum, row) => sum + row.missingHbin, 0);
+    const duplicateSerial = countDuplicateSerialRecords(records);
+    const hasNumericValue = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+    const missingFailValue = (state.analysis.failRecords || []).filter((record) => !hasNumericValue(record.failValue)).length;
+    const specIssues = buildAuditSpecIssues(files, missingFailValue);
+    const specConflictCount = specIssues.filter((item) => item.kind === "规格冲突").length;
+    const criticalCount = [missingSbin, specConflictCount, missingFailValue].filter((value) => value > 0).length;
+    const warningCount = [missingSerial, missingHbin, duplicateSerial, flow?.warnings?.length || 0].filter((value) => value > 0).length;
+    const statusClass = criticalCount ? "fail" : warningCount ? "watch" : "pass";
+    el.dataAuditStatus.className = `badge ${statusClass}`;
+    el.dataAuditStatus.textContent = criticalCount ? `${criticalCount} 类风险` : warningCount ? `${warningCount} 类关注` : "审计通过";
+
+    const metrics = [
+      ["分析文件", files.length, "当前分析范围"],
+      ["测试记录", records.length, "测试事件口径"],
+      ["疑似重复 Serial", duplicateSerial, "同一文件与 Site 内重复出现"],
+      ["缺 Serial", missingSerial, "影响跨阶段追踪"],
+      ["缺 SBin", missingSbin, "影响 Pass / Fail 判定"],
+      ["缺 HBin", missingHbin, "影响工厂分类"],
+      ["规格冲突项", specConflictCount, "同名测试项存在多套规格"],
+      ["Fail 缺实测值", missingFailValue, "无法判断偏低 / 偏高"],
+    ];
+    el.dataAuditMetrics.innerHTML = metrics.map(([label, value, note]) => `
+      <div class="audit-metric${Number(value) > 0 && !["分析文件", "测试记录"].includes(label) ? " has-risk" : ""}">
+        <span>${escapeHtml(label)}</span><strong>${formatInteger(value)}</strong><small>${escapeHtml(note)}</small>
+      </div>`).join("");
+
+    renderAuditFlow(flow, records.length);
+    renderAuditIssues({ flow, files, missingSerial, missingSbin, missingHbin, duplicateSerial, missingFailValue, specConflictCount });
+    el.dataAuditRoleTableBody.innerHTML = roleRows.length ? roleRows.map((row) => `
+      <tr>
+        <td><span class="truncate" title="${escapeHtml(row.file.name)}">${escapeHtml(shortName(row.file.name, 54))}</span></td>
+        <td>${escapeHtml(row.file.format || "未知")}</td>
+        <td><span class="badge ${row.presentation.badge}">${escapeHtml(row.presentation.label)}</span></td>
+        <td>${escapeHtml(row.basis)}</td>
+        <td>${formatInteger(row.file.records.length)}</td>
+        <td class="${row.missingSerial ? "danger-text" : ""}">${formatInteger(row.missingSerial)}</td>
+        <td class="${row.missingSbin ? "danger-text" : ""}">${formatInteger(row.missingSbin)}</td>
+        <td class="${row.missingHbin ? "danger-text" : ""}">${formatInteger(row.missingHbin)}</td>
+        <td>${escapeHtml(row.presentation.treatment)}</td>
+      </tr>`).join("") : `<tr><td colspan="9" class="empty-state">当前范围没有明细 CSV</td></tr>`;
+    el.dataAuditSpecTableBody.innerHTML = specIssues.length ? specIssues.map((item) => `
+      <tr>
+        <td><span class="badge ${item.badge}">${escapeHtml(item.kind)}</span></td>
+        <td>${escapeHtml(item.name)}</td>
+        <td>${formatInteger(item.count)}</td>
+        <td><span class="truncate" title="${escapeHtml(item.files.join("；"))}">${escapeHtml(item.files.map((name) => shortName(name, 28)).join("；"))}</span></td>
+        <td>${escapeHtml(item.advice)}</td>
+      </tr>`).join("") : `<tr><td colspan="5" class="empty-state">未发现规格冲突或实测值缺失</td></tr>`;
+  }
+
+  function buildAuditFileRow(file) {
+    const role = Core.factoryFileRole?.(file) || "initial";
+    const presentation = factoryRolePresentation(role);
+    const name = String(file.name || "").replace(/\\/g, "/").split("/").pop() || "";
+    const basis = role === "qa" ? "文件名包含独立 QA 字段"
+      : role === "retest" ? `阶段 ${file.stage || "RT"} 或文件名包含 RT`
+        : role === "disposition" ? "文件名包含 BIN 编号"
+          : "未命中 RT / QA / BIN 规则，按初测处理";
+    return {
+      file,
+      presentation,
+      basis: `${basis}${name ? `（${name}）` : ""}`,
+      missingSerial: file.records.filter((record) => !String(record.serial || "").trim()).length,
+      missingSbin: file.records.filter((record) => !String(record.sbin || "").trim()).length,
+      missingHbin: file.records.filter((record) => !String(record.hbin || "").trim()).length,
+    };
+  }
+
+  function countDuplicateSerialRecords(records) {
+    const seen = new Set();
+    let duplicates = 0;
+    records.forEach((record) => {
+      const serial = String(record.serial || "").trim();
+      if (!serial) return;
+      const key = `${record.fileId}\u0000${record.site || ""}\u0000${serial}`;
+      if (seen.has(key)) duplicates += 1;
+      else seen.add(key);
+    });
+    return duplicates;
+  }
+
+  function buildAuditSpecIssues(files, missingFailValue) {
+    const catalog = new Map();
+    files.forEach((file) => (file.tests || []).forEach((test) => {
+      if (!catalog.has(test.name)) catalog.set(test.name, { variants: new Map(), files: new Set(), missing: 0 });
+      const item = catalog.get(test.name);
+      const signature = `${test.lower ?? "—"} ~ ${test.upper ?? "—"} ${test.unit || ""}`;
+      item.variants.set(signature, (item.variants.get(signature) || 0) + 1);
+      item.files.add(file.name);
+      if (test.lower === null && test.upper === null) item.missing += 1;
+    }));
+    const issues = [];
+    catalog.forEach((item, name) => {
+      if (item.variants.size > 1) issues.push({
+        kind: "规格冲突", badge: "fail", name, count: item.variants.size, files: Array.from(item.files),
+        advice: `发现 ${Array.from(item.variants.keys()).join("；")}，建议选择单文件或确认产品规格版本。`,
+      });
+      if (item.missing) issues.push({
+        kind: "规格缺失", badge: "watch", name, count: item.missing, files: Array.from(item.files),
+        advice: "缺少 LSL 与 USL，不能进行超限方向和规格模拟。",
+      });
+    });
+    if (missingFailValue) issues.push({
+      kind: "实测值缺失", badge: "watch", name: "Fail 记录", count: missingFailValue,
+      files: files.filter((file) => file.records.some((record) => !record.isPass
+        && (record.failValue === null || record.failValue === undefined || record.failValue === "" || !Number.isFinite(Number(record.failValue))))).map((file) => file.name),
+      advice: "可保留 Fail 归因，但不能判断偏低 / 偏高或绘制该条实测分布。",
+    });
+    return issues.sort((a, b) => (a.badge === "fail" ? -1 : 1) - (b.badge === "fail" ? -1 : 1) || b.count - a.count);
+  }
+
+  function renderAuditFlow(flow, eventTotal) {
+    if (!flow) {
+      el.dataAuditFlow.innerHTML = `<div class="empty-state">当前范围没有可审计的生产流转数据</div>`;
+      return;
+    }
+    const excluded = Math.max(0, flow.rawInitial.total - flow.productionInitial.total);
+    const stages = [
+      ["原始测试事件", eventTotal, "source"],
+      ["排除复测事件", -flow.retest.total, "subtract"],
+      ["排除 QA", -flow.qa.total, "subtract"],
+      ["排除处置 / BIN", -flow.disposition.total, "subtract"],
+      ["原始初测", flow.rawInitial.total, "result"],
+      ["排除工程记录", -excluded, "subtract"],
+      ["正式初测投入", flow.productionInitial.total, "result"],
+      ["初测 Pass", flow.productionInitial.mainPass, "result"],
+      ["推算复测恢复", flow.inferredRecovered, "add"],
+      ["工厂最终产出", flow.factory ? flow.factory.output : null, "final"],
+    ];
+    el.dataAuditFlow.innerHTML = stages.map(([label, value, type], index) => `
+      <div class="audit-flow-step ${type}">
+        <span>${escapeHtml(label)}</span>
+        <strong>${value === null ? "待确认" : `${value < 0 ? "−" : type === "add" && value ? "+" : ""}${formatInteger(Math.abs(value))}`}</strong>
+        ${index < stages.length - 1 ? '<i aria-hidden="true">→</i>' : ""}
+      </div>`).join("");
+  }
+
+  function renderAuditIssues(context) {
+    const { flow, missingSerial, missingSbin, missingHbin, duplicateSerial, missingFailValue, specConflictCount } = context;
+    const issues = [];
+    if (missingSbin) issues.push(["风险", "缺少 SBin", `${formatInteger(missingSbin)} 条记录可能无法可靠判定 Pass / Fail。`, "fail"]);
+    if (specConflictCount) issues.push(["风险", "同名测试项规格不一致", `${formatInteger(specConflictCount)} 个测试项存在多套规格，汇总模拟应先缩小到单文件。`, "fail"]);
+    if (missingSerial) issues.push(["关注", "缺少 Serial", `${formatInteger(missingSerial)} 条记录无法用于跨 FT / RT 逐颗追踪。`, "watch"]);
+    if (duplicateSerial) issues.push(["关注", "疑似重复标识", `${formatInteger(duplicateSerial)} 条记录在同一文件与 Site 内重复出现，需核对是否为合法复测。`, "watch"]);
+    if (missingHbin) issues.push(["关注", "缺少 HBin", `${formatInteger(missingHbin)} 条记录会按原 Pass / Fail 兼容归类，工厂 Bin 构成可信度降低。`, "watch"]);
+    if (missingFailValue) issues.push(["关注", "Fail 缺实测值", `${formatInteger(missingFailValue)} 条 Fail 无法判断超限方向。`, "watch"]);
+    if (flow?.factory) {
+      const initialYield = flow.productionInitial.yield;
+      const difference = initialYield === null ? null : flow.factory.yield - initialYield;
+      issues.push([difference && Math.abs(difference) >= 0.0005 ? "说明" : "通过", "软件与工厂良率差异",
+        difference === null ? "缺少正式初测良率，暂不能比较。" : `正式初测 ${formatPercent(initialYield)}，工厂最终 ${formatPercent(flow.factory.yield)}，相差 ${difference >= 0 ? "+" : ""}${(difference * 100).toFixed(3)}%。差异可能来自复测恢复、工程记录排除或工厂最终处置。`,
+        difference && Math.abs(difference) >= 0.0005 ? "watch" : "pass"]);
+    } else issues.push(["说明", "缺少工厂良率锚点", "当前只能审计测试事件和正式初测口径，无法核对最终产出。", "unknown"]);
+    (flow?.warnings || []).forEach((warning) => issues.push(["口径", "生产口径提示", warning, "unknown"]));
+    if (!issues.length) issues.push(["通过", "未发现明显异常", "当前数据完整性和口径闭合检查通过。", "pass"]);
+    el.dataAuditIssues.innerHTML = issues.map(([level, title, detail, badge]) => `
+      <div class="audit-issue">
+        <span class="badge ${badge}">${escapeHtml(level)}</span>
+        <div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>
+      </div>`).join("");
   }
 
   function renderReleaseLog() {
