@@ -1001,6 +1001,44 @@ input.is-invalid {
   z-index: 1;
 }
 
+.distribution-test-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.distribution-test-group-label.is-pass-only {
+  margin-top: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.distribution-test-empty {
+  padding: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.distribution-test-toggle {
+  position: sticky;
+  bottom: -5px;
+  width: 100%;
+  min-height: 36px;
+  margin-top: 5px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: 7px;
+}
+
 .distribution-test-name {
   min-width: 0;
   overflow: hidden;

@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.43",
+      version: "v1.44",
       current: true,
+      title: "Fail 测试项菜单分组",
+      changes: [
+        "Fail 分布下拉菜单默认只显示有归因 Fail 的测试项，减少无 Fail 项造成的列表干扰。",
+        "增加“显示全部测试项”开关，展开后将无 Fail / 仅 Pass 项目单独分组显示。",
+        "从 Pass 稳定性联动到无 Fail 项时自动显示全部测试项，确保当前选择不会在菜单中消失。"
+      ],
+    },
+    {
+      version: "v1.43",
+      current: false,
       title: "分析范围文件名完整显示",
       changes: [
         "扩大分析范围选择框及展开列表宽度，桌面端可利用更多横向空间显示长文件名。",
@@ -288,6 +298,7 @@
     detailPage: 1,
     pageSize: 100,
     distributionPickerOpen: false,
+    showAllDistributionTests: false,
   };
 
   const el = {};
@@ -374,6 +385,12 @@
       setDistributionPickerOpen(!state.distributionPickerOpen);
     });
     el.distributionTestMenu.addEventListener("click", (event) => {
+      const toggle = event.target.closest("button[data-toggle-all-tests]");
+      if (toggle) {
+        state.showAllDistributionTests = !state.showAllDistributionTests;
+        updateDistributionTestSelect();
+        return;
+      }
       const option = event.target.closest("button[data-distribution-test]");
       if (option) selectDistributionReason(option.dataset.distributionTest);
     });
@@ -1140,7 +1157,10 @@
   function updateDistributionTestSelect(testNames = distributionTestNames()) {
     const failStatMap = new Map(state.analysis.failStats.map((item) => [item.reason, item]));
     const maxFailCount = Math.max(1, ...state.analysis.failStats.map((item) => item.count));
-    el.distributionTestMenu.innerHTML = testNames.map((name) => {
+    const failNames = testNames.filter((name) => (failStatMap.get(name)?.count || 0) > 0);
+    const passOnlyNames = testNames.filter((name) => !failStatMap.has(name) || !failStatMap.get(name)?.count);
+    if (passOnlyNames.includes(state.selectedDistributionReason)) state.showAllDistributionTests = true;
+    const renderOptions = (names) => names.map((name) => {
       const stat = failStatMap.get(name);
       const failCount = stat?.count || 0;
       const fillWidth = failCount ? Math.max(5, (failCount / maxFailCount) * 100) : 0;
@@ -1153,6 +1173,15 @@
         <span class="distribution-test-name">${escapeHtml(name)}</span>${failLabel}
       </button>`;
     }).join("");
+    el.distributionTestMenu.innerHTML = `
+      <div class="distribution-test-group-label">有 Fail 的测试项 <span>${formatInteger(failNames.length)}</span></div>
+      ${renderOptions(failNames) || '<div class="distribution-test-empty">当前范围没有归因 Fail 项</div>'}
+      ${state.showAllDistributionTests && passOnlyNames.length ? `
+        <div class="distribution-test-group-label is-pass-only">无 Fail / 仅 Pass 测试项 <span>${formatInteger(passOnlyNames.length)}</span></div>
+        ${renderOptions(passOnlyNames)}` : ""}
+      <button class="distribution-test-toggle" type="button" data-toggle-all-tests="true" aria-expanded="${state.showAllDistributionTests}">
+        ${state.showAllDistributionTests ? "收起无 Fail 测试项" : `显示全部测试项（另有 ${formatInteger(passOnlyNames.length)} 项）`}
+      </button>`;
     syncDistributionPickerSelection();
     setDistributionPickerOpen(state.distributionPickerOpen && Boolean(testNames.length));
   }
@@ -1402,6 +1431,8 @@
     if (!selected) return;
     state.selectedTest = selected;
     state.selectedDistributionReason = selected;
+    const isFailItem = state.analysis?.failStats.some((item) => item.reason === selected && item.count > 0);
+    if (state.activeTab === "stability" && !isFailItem) state.showAllDistributionTests = true;
   }
 
   function renderStabilityTable() {
@@ -1619,6 +1650,7 @@
     state.selectedFailReason = "all";
     state.selectedDistributionReason = "";
     state.distributionResult = null;
+    state.showAllDistributionTests = false;
     state.distributionLimits.clear();
     state.distributionCache.clear();
     state.limitDrag = null;
