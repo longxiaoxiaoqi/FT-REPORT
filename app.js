@@ -5,8 +5,18 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.47",
+      version: "v1.48",
       current: true,
+      title: "问题反馈入口布局优化",
+      changes: [
+        "将问题与反馈入口从版本说明标题栏移至更新日志右侧独立区域，减少标题栏干扰。",
+        "增加对话图标、轻量描边、悬停反馈与键盘焦点样式，并保留 GitHub 仓库跳转。",
+        "增加窄屏自适应布局，空间不足时反馈入口自动移动到更新日志上方。"
+      ],
+    },
+    {
+      version: "v1.47",
+      current: false,
       title: "数据质量与口径审计",
       changes: [
         "新增独立数据审计页，汇总缺失字段、疑似重复标识、规格冲突与 Fail 实测值缺失。",
