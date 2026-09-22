@@ -5,8 +5,53 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
+      version: "v1.54", current: true, title: "空封自动识别",
+      changes: ["已验证的 LX3418 ETS / LX3418C PowerTECH 数据中，至少两个前置 OS 项命中特征电压（±0.05V）标为空封。", "空封数量、明细标记与导出同步显示；同时输出包含空封与不包含空封的批次良率。"],
+    },
+    {
+      version: "v1.53",
+      current: false,
+      title: "子批次分组与总批次良率核对",
+      changes: [
+        "分析范围支持按子批次汇集初测和复测文件，不同产品、客户批号和子批次之间独立核对。",
+        "增加复测恢复、剩余 Fail 和待确认遗失差额，按累计通过数除以初测投入试算批次良率。",
+        "总批次按产品与客户批号汇总并按投入加权，异常链不静默计入确定良率，导出同步包含核对结果。"
+      ],
+    },
+    {
+      version: "v1.51",
+      current: false,
+      title: "简易指标补全与模式切换提速",
+      changes: [
+        "简易模式保留产品、记录数、Pass、Fail、首要 Fail、测试时间、UPH 和日产出八张指标卡。",
+        "模式切换复用当前分析结果与已生成页面，不再重新遍历测试记录或重建分析页。",
+        "简易模式跳过隐藏图表绘制，简易报告同步补齐产品及产能指标。"
+      ],
+    },
+    {
+      version: "v1.50",
+      current: false,
+      title: "简易与专业分析模式",
+      changes: [
+        "以简易模式和专业分析模式替代统计口径选择，模式切换保持良率计算一致。",
+        "简易模式聚焦良率、Pass/Fail 和前五项 Fail 的良率损失，支持简易报告导出。",
+        "专业模式展开完整分析页签、趋势和详细指标。"
+      ],
+    },
+    {
+      version: "v1.49",
+      current: false,
+      title: "Loop XLSX 循环测试兼容",
+      changes: [
+        "支持直接导入宽表型 Loop 测试 XLSX，自动识别 Test Name、规格、单位以及逐轮测试记录。",
+        "Loop XLSX 复用现有总览、Fail 分布、Pass 稳定性、明细和文件对比分析，并显示循环测试身份。",
+        "Loop 数据与工厂良率汇总 XLSX 自动区分，且不计入正式生产投入和工厂最终良率口径。",
+        "稳定性分析及导出明确使用生产 Pass 记录与全部 Loop 循环记录，包含失败循环。"
+      ],
+    },
+    {
       version: "v1.48",
-      current: true,
+      current: false,
       title: "问题反馈入口布局优化",
       changes: [
         "将问题与反馈入口从版本说明标题栏移至更新日志右侧独立区域，减少标题栏干扰。",
@@ -318,7 +363,8 @@
     factoryReports: [],
     filterId: "all",
     analysis: null,
-    analysisMode: "events",
+    analysisMode: "simple",
+    batchAnalysis: null,
     factoryAnalysis: null,
     productionFlow: null,
     productionOverrides: {},
@@ -343,6 +389,8 @@
 
   const el = {};
   const ids = [
+    "batchYieldPanel", "batchYieldContent",
+    "modeHint", "simpleImpactPanel", "simpleImpactContent", "expandAnalysisButton",
     "dropZone", "fileInput", "browseButton", "message", "workspace", "fileFilter", "analysisMode",
     "exportButton", "addFilesButton", "clearButton", "summaryCards", "paretoChart",
     "yieldChart", "yieldTrendHint", "failFocusContent", "testItemSelect", "selectedTestStats",
@@ -409,9 +457,10 @@
       analyzeAndRender();
     });
     el.analysisMode.addEventListener("change", () => {
-      state.analysisMode = ["events", "initial", "factory"].includes(el.analysisMode.value)
-        ? el.analysisMode.value : "events";
-      analyzeAndRender();
+      setAnalysisMode(el.analysisMode.value);
+    });
+    el.expandAnalysisButton.addEventListener("click", () => {
+      setAnalysisMode("professional");
     });
     el.testItemSelect.addEventListener("change", () => {
       setCurrentTestItem(el.testItemSelect.value);
@@ -687,6 +736,7 @@
     }
 
     let addedDetails = 0;
+    let addedLoopDetails = 0;
     let addedSummaries = 0;
     let addedFactoryReports = 0;
     for (const file of csvFiles) {
@@ -716,14 +766,23 @@
     }
     for (const file of xlsxFiles) {
       const signature = `xlsx:${file.name}|${file.size}|${file.lastModified}`;
-      if (state.factoryReports.some((item) => item.signature === signature)) continue;
+      if (state.files.some((item) => item.signature === signature)
+        || state.factoryReports.some((item) => item.signature === signature)) continue;
       try {
-        const parsed = await Core.parseFactoryYieldWorkbook(await file.arrayBuffer(), file.name);
+        const id = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const result = await Core.parseXlsxWorkbook(await file.arrayBuffer(), file.name, id);
+        const parsed = result.data;
         parsed.signature = signature;
         parsed.size = file.size;
         parsed.lastModified = file.lastModified;
-        state.factoryReports.push(parsed);
-        addedFactoryReports += 1;
+        if (result.kind === "detail") {
+          state.files.push(parsed);
+          addedDetails += 1;
+          addedLoopDetails += 1;
+        } else {
+          state.factoryReports.push(parsed);
+          addedFactoryReports += 1;
+        }
       } catch (error) {
         errors.push(`${file.name}：${error.message}`);
       }
@@ -745,17 +804,18 @@
       analyzeAndRender();
     }
     const loadedText = [
-      addedDetails ? `${addedDetails} 个明细 CSV` : "",
+      addedDetails - addedLoopDetails ? `${addedDetails - addedLoopDetails} 个明细 CSV` : "",
+      addedLoopDetails ? `${addedLoopDetails} 个 Loop XLSX` : "",
       addedSummaries ? `${addedSummaries} 个 Summary 汇总报告` : "",
       addedFactoryReports ? `${addedFactoryReports} 个工厂良率 XLSX` : "",
     ].filter(Boolean).join("、");
     if (errors.length) showMessage(`已载入 ${loadedText || "0 个文件"}；${errors.join("；")}`, "error");
     else if (!state.files.length) {
-      showMessage(`已载入 ${loadedText}；请继续添加明细 CSV 进行匹配分析。`, "success");
+      showMessage(`已载入 ${loadedText}；请继续添加测试明细文件进行匹配分析。`, "success");
     } else if (added) {
       const summaryHint = addedSummaries ? "；Summary 已独立收纳，可在“分析范围”中选择查看" : "";
       const factoryHint = addedFactoryReports ? "；工厂良率报告已作为最终良率锚点" : "";
-      showMessage(`已载入 ${loadedText}，共 ${formatInteger(state.analysis.total)} 条逐颗测试记录${summaryHint}${factoryHint}。`, "success");
+      showMessage(`已载入 ${loadedText}，共 ${formatInteger(state.analysis.total)} 条测试事件记录${summaryHint}${factoryHint}。`, "success");
     }
     else showMessage("这些文件已经载入，无需重复添加。", "error");
   }
@@ -773,8 +833,10 @@
   }
 
   function updateFileFilter() {
+    const groups = Core.groupSubLots(state.files);
     const summaryFilterId = state.filterId.startsWith("summary:") ? state.filterId.slice(8) : "";
     const current = state.files.some((file) => file.id === state.filterId)
+      || groups.some((group) => group.id === state.filterId)
       || state.summaryReports.some((report) => report.id === summaryFilterId)
       ? state.filterId
       : "all";
@@ -783,8 +845,8 @@
       state.factoryReports.length ? `${state.factoryReports.length} 个工厂 XLSX 锚点` : "",
     ].filter(Boolean).join("；");
     const totalLabel = extras
-      ? `全部明细 CSV（${state.files.length}；另有 ${extras}）`
-      : `全部明细 CSV 汇总（${state.files.length}）`;
+      ? `全部测试明细（${state.files.length}；另有 ${extras}）`
+      : `全部测试明细汇总（${state.files.length}）`;
     const detailOptions = state.files.map((file) => {
       const time = file.fileTimeLabel ? `${file.fileTimeLabel} · ` : "";
       return `<option value="${escapeHtml(file.id)}">${escapeHtml(time)}${escapeHtml(file.testType || "初测")} ${escapeHtml(file.stage)} · ${escapeHtml(file.format || "未知")} · ${escapeHtml(rangeFileName(file))}</option>`;
@@ -795,7 +857,8 @@
     }).join("");
     el.fileFilter.innerHTML = `
       <option value="all">${totalLabel}</option>
-      ${detailOptions ? `<optgroup label="明细 CSV">${detailOptions}</optgroup>` : ""}
+      ${groups.length ? `<optgroup label="按子批次分析">${groups.map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.label)}（${group.files.length} 个文件）</option>`).join("")}</optgroup>` : ""}
+      ${detailOptions ? `<optgroup label="测试明细文件">${detailOptions}</optgroup>` : ""}
       ${summaryOptions ? `<optgroup label="Summary 汇总报告（独立查看）">${summaryOptions}</optgroup>` : ""}`;
     state.filterId = current;
     el.fileFilter.value = current;
@@ -804,9 +867,10 @@
   function analyzeAndRender() {
     const summaryFilterId = state.filterId.startsWith("summary:") ? state.filterId.slice(8) : "";
     const detailFilterId = summaryFilterId ? "__summary_only__" : state.filterId;
-    el.analysisMode.disabled = Boolean(summaryFilterId);
-    el.analysisMode.title = summaryFilterId ? "Summary 使用报告自身口径独立查看" : "";
+    el.analysisMode.disabled = false;
+    el.analysisMode.title = "切换展示深度，不改变良率计算";
     state.analysis = Core.analyze(state.files, detailFilterId);
+    state.batchAnalysis = Core.analyzeSubLots(state.analysis.selectedFiles);
     state.factoryAnalysis = summaryFilterId
       ? null
       : Core.analyzeFactory?.(state.files, detailFilterId) || null;
@@ -821,8 +885,10 @@
       : null;
     state.distributionCache.clear();
     el.workspace.hidden = false;
+    applyAnalysisMode();
     updateTabAvailability();
     renderSummary();
+    renderBatchYield();
     renderFactoryPanel();
     renderSummaryReports();
     renderFailOverview();
@@ -835,6 +901,37 @@
     requestAnimationFrame(drawVisibleCharts);
   }
 
+  function renderBatchYield() {
+    const data = state.batchAnalysis;
+    el.batchYieldPanel.hidden = !data?.lots.length;
+    if (!data?.lots.length) { el.batchYieldContent.innerHTML = ""; return; }
+    const number = (value) => value === null ? "待确认" : formatInteger(value);
+    const ratio = (value) => value === null ? "数据不足" : formatYieldPrecise(value);
+    const parents = data.parents.map((parent) => `<div class="batch-total"><strong>${escapeHtml(parent.product || "产品未记录")} / ${escapeHtml(parent.customerLot || "客户批号未记录（不跨子批汇总）")}</strong><span>包含空封良率 <b>${ratio(parent.yield)}</b></span><span>不包含空封良率 <b>${ratio(parent.yieldWithoutEmptySeal)}</b></span><span>初测空封 ${number(parent.emptySeal)}</span><span>${parent.complete ? "累计通过 / 初测投入" : "可核对子批小计（非完整总批）"}：${number(parent.output)} / ${number(parent.input)}</span><span>待确认遗失差额 ${number(parent.gap)}</span>${parent.pending ? '<span>存在未纳入文件或数据异常，请查看下方说明</span>' : ""}</div>`).join("");
+    const lots = data.lots.map((lot) => {
+      const status = !lot.applicable ? "仅 QA / Loop，不参与生产良率" : lot.issues.length ? lot.issues.join("；") : "按上轮全部 Fail 进入下轮的假设核对";
+      const steps = lot.steps.map((step) => `<tr><td>${escapeHtml(step.stage)}</td><td>${escapeHtml(step.fileName)}</td><td>${step.total}</td><td>${step.pass}</td><td>${step.fail}</td><td>${step.delta === null ? "—" : step.delta}</td></tr>`).join("");
+      return `<tr><td>${escapeHtml(lot.lot || "子批号缺失")}<br><small>${escapeHtml(lot.product)} / ${escapeHtml(lot.customerLot)}</small></td><td>${number(lot.input)}</td><td>${number(lot.recovered)}</td><td>${number(lot.output)}</td><td>${number(lot.remaining)}</td><td>${number(lot.gap)}</td><td>${number(lot.emptySeal)}</td><td><strong>${ratio(lot.yield)}</strong></td><td><strong>${ratio(lot.yieldWithoutEmptySeal)}</strong></td><td><details><summary>${escapeHtml(status)} · 查看链路</summary><div class="batch-chain"><div class="table-wrap"><table><thead><tr><th>轮次</th><th>来源文件</th><th>投入</th><th>Pass</th><th>Fail</th><th>上轮 Fail − 本轮投入</th></tr></thead><tbody>${steps}</tbody></table></div>${lot.pending.length ? `<p>未纳入恢复：${lot.pending.map((file) => escapeHtml(file.name)).join("；")}</p>` : ""}${lot.excluded.length ? `<p>QA / Loop 等排除文件：${lot.excluded.map((file) => escapeHtml(file.name)).join("；")}</p>` : ""}</div></details></td></tr>`;
+    }).join("");
+    el.batchYieldContent.innerHTML = `${parents}<p class="mode-hint">空封识别：LX3418 系列已验证 ETS / PowerTECH 程序，至少两个前置 OS 命中特征电压，容差 ±0.05V。不包含空封良率 = 累计通过 ÷（初测投入 − 初测空封）；仅扣初测空封，复测不重复扣减。包含空封良率 =（初测 Pass + 各轮复测 Pass）÷ 初测投入；遗失差额保留在分母。假设每轮 Pass 不再复测，正差额暂不等于已确认掉料。BIN 文件不自动计入恢复。工厂投入和调机排除尚未确认时，初测投入使用 CSV 原始条数。</p><div class="table-wrap"><table><thead><tr><th>子批号</th><th>初测投入</th><th>复测恢复</th><th>累计通过</th><th>末轮 Fail</th><th>待确认遗失</th><th>初测空封</th><th>包含空封良率</th><th>不包含空封良率</th><th>核对说明</th></tr></thead><tbody>${lots}</tbody></table></div>`;
+  }
+
+  function appendBatchExport(rows) {
+    if (!state.batchAnalysis?.lots.length) return;
+    rows.push([], ["子批次良率试算", "假设各轮 Pass 退出复测；初测投入使用 CSV 条数；差额未确认物理遗失；BIN 文件未自动计入恢复"]);
+    rows.push(["产品", "客户批号", "子批号", "初测投入", "复测恢复", "累计通过", "末轮 Fail", "待确认遗失差额", "包含空封良率", "初测空封", "不包含空封良率", "说明"]);
+    for (const lot of state.batchAnalysis.lots) rows.push([lot.product, lot.customerLot, lot.lot || "缺失", lot.input, lot.recovered, lot.output, lot.remaining, lot.gap, lot.yield === null ? "待确认" : formatYieldPrecise(lot.yield), lot.emptySeal, lot.yieldWithoutEmptySeal === null ? "数据不足" : formatYieldPrecise(lot.yieldWithoutEmptySeal), !lot.applicable ? "非生产数据" : lot.issues.join("；") || "按全部 Fail 复测假设"]);
+    rows.push([], ["总批次试算（累计通过之和 / 初测投入之和）"], ["产品", "客户批号", "可核对投入", "可核对通过", "待确认遗失差额", "包含空封良率", "初测空封", "不包含空封良率", "状态"]);
+    for (const parent of state.batchAnalysis.parents) rows.push([parent.product, parent.customerLot, parent.input, parent.output, parent.gap, parent.yield === null ? "待确认" : formatYieldPrecise(parent.yield), parent.emptySeal, parent.yieldWithoutEmptySeal === null ? "数据不足" : formatYieldPrecise(parent.yieldWithoutEmptySeal), !parent.complete ? "含无法核对的子批次，小计非完整总批" : parent.pending ? "含待确认文件，截止明确链" : "全部 Fail 复测假设"]);
+    rows.push([], ["子批次轮次核对"], ["子批号", "轮次", "来源文件", "投入", "Pass", "Fail", "上轮 Fail 减本轮投入"]);
+    for (const lot of state.batchAnalysis.lots) for (const step of lot.steps) rows.push([lot.lot, step.stage, step.fileName, step.total, step.pass, step.fail, step.delta]);
+    rows.push([], ["未计入复测链的文件"], ["子批号", "来源文件", "原因"]);
+    for (const lot of state.batchAnalysis.lots) {
+      for (const file of lot.pending) rows.push([lot.lot, file.name, "BIN 或阶段不明，流转待确认"]);
+      for (const file of lot.excluded) rows.push([lot.lot, file.name, "QA / Loop / Summary，不计入生产恢复"]);
+    }
+  }
+
   function updateTabAvailability() {
     const hasDetails = Boolean(state.analysis?.selectedFiles.length);
     document.querySelectorAll(".tab[data-tab]").forEach((button) => {
@@ -845,6 +942,28 @@
     if (!hasDetails && ["distribution", "stability", "details"].includes(state.activeTab)) {
       switchTab("overview");
     }
+  }
+
+  function setAnalysisMode(mode) {
+    state.analysisMode = mode === "professional" ? "professional" : "simple";
+    el.analysisMode.value = state.analysisMode;
+    // The mode changes presentation only. Keep analysis, selections and caches intact.
+    applyAnalysisMode();
+    requestAnimationFrame(drawVisibleCharts);
+  }
+
+  function applyAnalysisMode() {
+    const simple = state.analysisMode === "simple";
+    el.workspace.classList.toggle("simple-mode", simple);
+    el.simpleImpactPanel.hidden = !simple;
+    document.querySelectorAll(".tab[data-tab]").forEach((button) => {
+      button.hidden = simple && button.dataset.tab !== "overview";
+    });
+    if (simple && state.activeTab !== "overview") switchTab("overview");
+    el.modeHint.textContent = simple
+      ? "简易模式 · 先看良率，再看主要 Fail 的影响。复测和 Loop 按测试次数统计，不代表唯一产品数。"
+      : "专业分析模式 · 展开分布、稳定性、明细、文件对比和数据审计；良率仍按当前测试记录计算。";
+    el.exportButton.textContent = simple ? "导出简易报告" : "导出分析结果";
   }
 
   function renderSummary() {
@@ -880,7 +999,7 @@
         value: formatInteger(source.total),
         context: summaryOnly
           ? `${formatInteger(state.summaryAggregate.uniqueReportCount)} 个 Summary · 无逐颗数据`
-          : `${a.selectedFiles.length} 个明细 CSV`,
+          : `${a.selectedFiles.length} 个测试明细文件`,
         className: "",
       },
       { label: "Pass", value: formatInteger(source.pass), context: source.total ? `${formatPercent(source.yield)} 良率` : "—", className: "pass" },
@@ -907,6 +1026,17 @@
         title: "日产出 = UPH × 20 小时 × 85%",
       },
     ];
+    // Prepare the compact view on data changes, even when professional mode is active.
+    {
+      const top = failStats.slice(0, 5);
+      el.simpleImpactContent.innerHTML = !source.total
+        ? '<p class="empty-state">当前范围没有可分析的测试记录。</p>'
+        : !source.fail ? '<p class="empty-state">当前范围全部通过，没有 Fail 影响良率。</p>'
+        : !top.length ? '<p class="empty-state">存在 Fail，但缺少归因数据，请展开专业分析核查。</p>'
+        : `<p>优先关注 <strong>${escapeHtml(top[0].reason)}</strong>：${formatInteger(top[0].count)} 次 Fail，占全部 Fail 的 ${formatPercent(top[0].failShare)}。</p>`
+          + top.map((item, index) => `<div class="impact-row"><div><strong>${index + 1}. ${escapeHtml(item.reason)}</strong><span>${formatInteger(item.count)} 次 · 占 Fail ${formatPercent(item.failShare)}</span></div><div class="impact-bar"><i style="width:${Math.max(0, Math.min(100, item.count / top[0].count * 100))}%"></i></div><strong>损失 ${formatDecimal(item.count / source.total * 100, 2)} 个百分点</strong></div>`).join("")
+          + `<p class="mode-hint">${failStats.length > 5 ? `仅展示前 5 项，其余 ${failStats.length - 5} 项可在专业模式查看。` : ""}此处展示现有 Fail 归因，不代表修复后一定能恢复相同良率。${summaryOnly ? "当前使用 Summary 报告数据，归因数量请以内部校验为准。" : ""}</p>`;
+    }
     el.summaryCards.innerHTML = cards.map((card) => `
       <article class="summary-card ${card.className}"${card.title ? ` title="${escapeHtml(card.title)}"` : ""}>
         <div class="label">${card.label}</div>
@@ -1599,7 +1729,7 @@
     if (!item) return;
     const metrics = [
       ["判定", statusBadge(item.status)],
-      ["Pass 样本", formatInteger(item.n)],
+      ["分析样本", formatInteger(item.n)],
       ["均值", formatMeasurement(item.mean, item.unit)],
       ["标准差", formatMeasurement(item.std, item.unit)],
       ["Ppk", formatPpk(item.ppk)],
@@ -1617,7 +1747,7 @@
       const fileMap = new Map(state.files.map((file) => [file.id, file]));
       records = records.filter((record) => {
         const file = fileMap.get(record.fileId);
-        return [record.serial, record.site, record.hbin, record.sbin, record.failReason, file?.name, file?.stage, file?.testType, file?.fileTimeLabel]
+        return [record.isEmptySeal ? "空封" : "", record.serial, record.site, record.hbin, record.sbin, record.failReason, file?.name, file?.stage, file?.testType, file?.fileTimeLabel]
           .some((value) => String(value || "").toLowerCase().includes(state.detailSearch));
       });
     }
@@ -1644,7 +1774,7 @@
           <td>${escapeHtml(record.site)}</td>
           <td>${escapeHtml(record.hbin || "—")}</td>
           <td>${escapeHtml(record.sbin)}</td>
-          <td><button class="table-link" type="button" data-distribution-reason="${escapeHtml(record.failReason)}">${escapeHtml(record.failReason)}</button></td>
+          <td>${record.isEmptySeal ? `<span class="badge">空封 · ${record.emptySealOsCount} 项 OS</span> ` : ""}<button class="table-link" type="button" data-distribution-reason="${escapeHtml(record.failReason)}">${escapeHtml(record.failReason)}</button></td>
           <td>${formatMeasurement(record.failValue, record.failUnit)}</td>
           <td>${formatBounds(record.failLower, record.failUpper, record.failUnit)}</td>
           <td>${directionBadge(record.failDirection)}</td>
@@ -1708,6 +1838,7 @@
       retest: { label: "复测", treatment: "单独列示，暂不覆盖", badge: "retest" },
       qa: { label: "QA 验证", treatment: "工厂口径排除", badge: "watch" },
       disposition: { label: "处置 / BIN", treatment: "待确认流程规则", badge: "watch" },
+      loop: { label: "Loop 循环", treatment: "仅用于循环稳定性分析", badge: "watch" },
       summary: { label: "Summary", treatment: "独立查看，不自动并入", badge: "watch" },
     };
     return roles[role] || roles.initial;
@@ -1715,6 +1846,7 @@
 
   function currentFileSummaries() {
     const details = state.analysis?.fileSummaries || [];
+    if (state.filterId.startsWith("lot:")) return details;
     const reports = state.summaryReports.map((report) => Core.summarizeSummaryReport(report));
     return Core.sortFilesChronologically([...details, ...reports]);
   }
@@ -1767,7 +1899,7 @@
         <td class="${row.missingSbin ? "danger-text" : ""}">${formatInteger(row.missingSbin)}</td>
         <td class="${row.missingHbin ? "danger-text" : ""}">${formatInteger(row.missingHbin)}</td>
         <td>${escapeHtml(row.presentation.treatment)}</td>
-      </tr>`).join("") : `<tr><td colspan="9" class="empty-state">当前范围没有明细 CSV</td></tr>`;
+      </tr>`).join("") : `<tr><td colspan="9" class="empty-state">当前范围没有测试明细文件</td></tr>`;
     el.dataAuditSpecTableBody.innerHTML = specIssues.length ? specIssues.map((item) => `
       <tr>
         <td><span class="badge ${item.badge}">${escapeHtml(item.kind)}</span></td>
@@ -1785,7 +1917,8 @@
     const basis = role === "qa" ? "文件名包含独立 QA 字段"
       : role === "retest" ? `阶段 ${file.stage || "RT"} 或文件名包含 RT`
         : role === "disposition" ? "文件名包含 BIN 编号"
-          : "未命中 RT / QA / BIN 规则，按初测处理";
+          : role === "loop" ? "XLSX 表头识别为逐轮循环测试"
+            : "未命中 RT / QA / BIN 规则，按初测处理";
     return {
       file,
       presentation,
@@ -1943,6 +2076,7 @@
     state.summaryReports = [];
     state.factoryReports = [];
     state.analysis = null;
+    state.batchAnalysis = null;
     state.factoryAnalysis = null;
     state.productionFlow = null;
     state.productionOverrides = {};
@@ -2022,8 +2156,26 @@
     const selectedSummary = state.filterId.startsWith("summary:")
       ? state.summaryAggregate?.reports[0]?.name || ""
       : "";
-    rows.push(["分析范围", state.filterId === "all" ? "全部明细 CSV 汇总" : selectedSummary || a.selectedFiles[0]?.name || ""]);
+    rows.push(["分析范围", el.fileFilter.selectedOptions[0]?.textContent || selectedSummary || ""]);
     rows.push(["数据来源", summaryOnly ? "Summary 汇总报告（不含逐颗实测值）" : "逐颗明细 CSV"]);
+    rows.push(["分析模式", state.analysisMode === "simple" ? "简易模式" : "专业分析模式"]);
+    rows.push(["空封测试记录数", summaryOnly ? "无实测值，无法识别" : a.emptySeal, "至少两个前置 OS 命中特征电压 ±0.05V；批次扣空封口径只扣初测空封"]);
+    appendBatchExport(rows);
+    if (state.analysisMode === "simple") {
+      rows.push(["产品名称", productSummary(summaryOnly, a).value]);
+      rows.push(["统计说明", summaryOnly ? "Summary 报告自身统计" : "按测试事件统计，复测与 Loop 不代表唯一产品数"]);
+      rows.push(["测试记录", source.total, "Pass", source.pass, "Fail", source.fail, "良率", source.total ? formatPercent(source.yield) : "—"]);
+      rows.push(["单颗测试时间(ms)", rawNumber(source.testTimeMs), "UPH", rawNumber(source.uph), "日产出", rawNumber(source.dailyOutput)]);
+      rows.push(["产能说明", `含 ${source.indexTimeMs} ms Index 时间；${source.dailyHours} 小时 × ${formatPercent(source.utilization)} 稼动率${summaryOnly ? "；Summary 理论估算" : ""}`]);
+      rows.push(["Fail 测试项", "次数", "占 Fail 比例", "良率损失（百分点）"]);
+      (summaryOnly ? state.summaryAggregate.failStats : a.failStats).slice(0, 5).forEach((item) => rows.push([
+        item.reason, item.count, formatPercent(item.failShare), source.total ? (item.count / source.total * 100).toFixed(2) : ""
+      ]));
+      rows.push(["说明", "仅展示前五项；现有 Fail 归因不代表修复后一定能恢复相同良率。完整数据见专业分析报告。"]);
+      downloadText("\uFEFF" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n"), `FT简易报告_${timestampForFile()}.csv`, "text/csv;charset=utf-8");
+      showMessage("简易报告已导出。", "success");
+      return;
+    }
     const productionMode = ["initial", "factory"].includes(state.analysisMode) && !summaryOnly && Boolean(state.productionFlow);
     const factoryMode = state.analysisMode === "factory" && productionMode;
     rows.push(["统计口径", factoryMode ? "工厂最终口径" : productionMode ? "正式初测口径" : "测试事件口径"]);
@@ -2106,7 +2258,8 @@
       summaryOnly ? "Summary 无方向数据" : item.unknown + item.within,
     ]));
     rows.push([]);
-    rows.push(["Pass 稳定性"]);
+    rows.push(["参数稳定性"]);
+    rows.push(["样本口径", "生产数据仅使用 Pass 记录；Loop 数据使用全部循环记录（含失败循环）"]);
     rows.push(["测试项", "状态", "样本数", "均值", "标准差", "Ppk", "6σ/规格宽度", "中心偏移", "下限", "上限", "单位"]);
     a.stability.forEach((item) => rows.push([
       item.name, statusText(item.status), item.n, rawNumber(item.mean), rawNumber(item.std), rawNumber(item.ppk),
@@ -2114,7 +2267,7 @@
     ]));
     rows.push([]);
     rows.push(["Fail 明细"]);
-    rows.push(["文件", "阶段", "类型", "文件名时间", "Serial", "Site", "HBIN", "SBIN", "Fail 测试项", "实测值", "下限", "上限", "单位", "判定", "测试日期时间", "单颗测试时间(ms)"]);
+    rows.push(["文件", "阶段", "类型", "文件名时间", "Serial", "Site", "HBIN", "SBIN", "Fail 测试项", "实测值", "下限", "上限", "单位", "判定", "测试日期时间", "单颗测试时间(ms)", "空封", "空封特征 OS 项数"]);
     a.failRecords.forEach((record) => {
       const file = fileMap.get(record.fileId);
       rows.push([
@@ -2122,6 +2275,7 @@
         record.serial, record.site, record.hbin, record.sbin,
         record.failReason, rawNumber(record.failValue), rawNumber(record.failLower), rawNumber(record.failUpper),
         record.failUnit, directionText(record.failDirection), record.date, rawNumber(record.testTimeMs),
+        record.isEmptySeal ? "是" : "否", record.emptySealOsCount,
       ]);
     });
     const content = "\uFEFF" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
@@ -2130,7 +2284,7 @@
   }
 
   function drawVisibleCharts() {
-    if (!state.analysis) return;
+    if (!state.analysis || state.analysisMode === "simple") return;
     if (state.activeTab === "overview") {
       drawParetoChart();
       drawYieldChart();
@@ -2671,7 +2825,7 @@
   }
 
   function drawParameterChart(result) {
-    if (!result?.stability || !result.points.length) return drawEmptyChart(el.parameterChart, "该测试项没有 Pass 数值");
+    if (!result?.stability || !result.points.length) return drawEmptyChart(el.parameterChart, "该测试项没有可分析数值");
     const setup = prepareCanvas(el.parameterChart);
     if (!setup) return;
     const { ctx, width, height, theme } = setup;
@@ -2713,8 +2867,8 @@
       ctx.fillStyle = theme.accent;
       points.forEach((point, index) => { ctx.beginPath(); ctx.arc(xFor(index), yFor(point.value), 2, 0, Math.PI * 2); ctx.fill(); });
     }
-    ctx.fillStyle = theme.muted; ctx.textAlign = "left"; ctx.fillText("Pass 样本 1", margin.left, height - 8);
-    ctx.textAlign = "right"; ctx.fillText(`Pass 样本 ${formatInteger(result.points.length)}`, margin.left + plotW, height - 8);
+    ctx.fillStyle = theme.muted; ctx.textAlign = "left"; ctx.fillText("样本 1", margin.left, height - 8);
+    ctx.textAlign = "right"; ctx.fillText(`样本 ${formatInteger(result.points.length)}`, margin.left + plotW, height - 8);
   }
 
   function drawFileYieldChart() {

@@ -289,7 +289,7 @@
     return result;
   }
 
-  async function parseFactoryYieldWorkbook(arrayBuffer, fileName = "工厂良率汇总.xlsx") {
+  async function parseXlsxWorkbookRows(arrayBuffer, fileName) {
     const entries = await extractZipEntries(arrayBuffer, fileName, (entryName) => /^(?:xl\/sharedStrings\.xml|xl\/worksheets\/sheet\d+\.xml)$/i.test(entryName));
     const entryMap = new Map(entries.map((entry) => [entry.name.toLowerCase(), new TextDecoder("utf-8").decode(entry.bytes)]));
     const sharedXml = entryMap.get("xl/sharedstrings.xml") || "";
@@ -299,10 +299,59 @@
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))[0];
     if (!sheetEntry) throw new Error("Excel 中没有可读取的工作表");
     const sheetXml = new TextDecoder("utf-8").decode(sheetEntry.bytes);
+    return parseXlsxSheet(sheetXml, sharedStrings);
+  }
+
+  async function parseFactoryYieldWorkbook(arrayBuffer, fileName = "工厂良率汇总.xlsx") {
+    const rows = await parseXlsxWorkbookRows(arrayBuffer, fileName);
     return {
       id: `factory-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: fileName,
-      rows: parseFactoryYieldRows(parseXlsxSheet(sheetXml, sharedStrings), fileName),
+      rows: parseFactoryYieldRows(rows, fileName),
+    };
+  }
+
+  function isLoopTestWorkbookRows(rows) {
+    const headerIndex = rows.findIndex((row) => {
+      const normalized = row.map(keyName);
+      return normalized[0] === "site #" && normalized.includes("sbin") && normalized.includes("hbin");
+    });
+    if (headerIndex < 0) return false;
+    const definitions = rows.slice(0, headerIndex).map((row) => keyName(row[0]));
+    return definitions.includes("test name")
+      && definitions.includes("test number")
+      && definitions.includes("lower limit")
+      && definitions.includes("upper limit");
+  }
+
+  function loopProductName(fileName) {
+    return summaryEntryName(fileName)
+      .replace(/\.xlsx$/i, "")
+      .replace(/\s*[-_]?\s*test\s*data$/i, "")
+      .trim();
+  }
+
+  async function parseXlsxWorkbook(arrayBuffer, fileName = "测试数据.xlsx", fileId = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`) {
+    const rows = await parseXlsxWorkbookRows(arrayBuffer, fileName);
+    if (isLoopTestWorkbookRows(rows)) {
+      const parsed = parsePowerTechRows(rows, fileName, fileId);
+      parsed.format = "Loop XLSX";
+      parsed.dataKind = "loop";
+      parsed.stage = "LOOP";
+      parsed.testType = "循环测试";
+      parsed.isRetest = false;
+      parsed.loopCount = parsed.records.length;
+      parsed.metadata["data mode"] = "Loop";
+      if (!parsed.metadata.device) parsed.metadata.device = loopProductName(fileName);
+      return { kind: "detail", data: parsed };
+    }
+    return {
+      kind: "factory",
+      data: {
+        id: `factory-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: fileName,
+        rows: parseFactoryYieldRows(rows, fileName),
+      },
     };
   }
 
@@ -1427,8 +1476,120 @@
   }
 
   function selectFiles(files, filterId) {
-    const selected = filterId === "all" ? files.slice() : files.filter((file) => file.id === filterId);
+    const selected = filterId === "all" ? files.slice()
+      : filterId.startsWith("lot:") ? (groupSubLots(files).find((group) => group.id === filterId)?.files || [])
+        : files.filter((file) => file.id === filterId);
     return sortFilesChronologically(selected);
+  }
+
+  function groupSubLots(files) {
+    const groups = new Map();
+    for (const file of files) {
+      const m = file.metadata || {};
+      const rawLot = clean(m["sub lot number"] || m["mes lotid"] || m.sublot || "").replace(/=(?:FT|RT)\d*$/i, "");
+      const lot = /^(?:N\/?A|unknown|未知|-+)$/i.test(rawLot) ? "" : rawLot;
+      const product = clean(m.product_model || m.device || "");
+      const customerLot = clean(m.customer_lotid || m["cust lotid"] || "").replace(/=(?:FT|RT)\d*$/i, "");
+      // Never merge unknown identities, or the same sublot across products/customer lots.
+      const key = JSON.stringify([product, customerLot, lot, lot ? "" : file.id]);
+      if (!groups.has(key)) groups.set(key, {
+        id: `lot:${key}`, lot, product, customerLot, files: [],
+        label: lot ? `${lot} · ${product || "产品未记录"} · ${customerLot || "客户批号未记录"}` : `子批号缺失 · ${file.name}`,
+      });
+      groups.get(key).files.push(file);
+    }
+    return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, "zh-CN", { numeric: true }));
+  }
+
+  function analyzeSubLots(files) {
+    files.forEach(classifyEmptySeals);
+    const lots = groupSubLots(files).map((group) => {
+      const issues = [];
+      const steps = [];
+      const excluded = [];
+      const pending = [];
+      const rounds = [];
+      for (const file of group.files) {
+        const role = factoryFileRole(file);
+        if (["qa", "loop", "summary"].includes(role)) { excluded.push(file); continue; }
+        const baseName = String(file.name || "").replace(/\\/g, "/").split("/").pop();
+        const stage = stageFromFileName(baseName) || clean(file.metadata?.["wafer id"] || file.metadata?.testcode).toUpperCase();
+        if (/(?:^|[_.-])BIN\d+(?:[_.-]|$)/i.test(baseName) || !/^(FT|RT)\d*$/.test(stage)) {
+          pending.push(file);
+          continue;
+        }
+        rounds.push({ file, stage, rank: stage.startsWith("FT") ? -1 : stage === "RT" ? 0 : Number(stage.slice(2)) });
+      }
+      const result = { ...group, steps, excluded, pending, issues, applicable: rounds.length > 0 || pending.length > 0,
+        input: null, initialPass: null, recovered: null, output: null, remaining: null, gap: null, yield: null, emptySeal: null, yieldWithoutEmptySeal: null, provisional: true };
+      if (!result.applicable) return result;
+      if (pending.length) issues.push(`${pending.length} 个 BIN / 阶段不明文件待确认，未计入恢复`);
+      if (!group.lot) issues.push("缺少子批号，不能关联复测");
+      const initials = rounds.filter((round) => round.rank === -1);
+      if (initials.length !== 1) issues.push(initials.length ? "存在多个初测文件，需确认分片或重复测试" : "缺少初测文件");
+      const retests = rounds.filter((round) => round.rank >= 0).sort((a, b) => a.rank - b.rank);
+      if (new Set(retests.map((round) => round.rank)).size !== retests.length) issues.push("同一复测轮次存在多个文件，需确认分片或重复测试");
+      let valid = Boolean(group.lot) && initials.length === 1 && new Set(retests.map((round) => round.rank)).size === retests.length;
+      let previousFail = null;
+      let previousRank = null;
+      let previousTime = "";
+      let output = 0, recovered = 0, gap = 0;
+      for (const round of [...initials, ...retests]) {
+        const records = round.file.records || [];
+        const pass = records.reduce((sum, record) => sum + Number(Boolean(record.isPass)), 0);
+        const fail = records.length - pass;
+        const isInitial = round.rank === -1;
+        const delta = isInitial || previousFail === null ? null : previousFail - records.length;
+        const time = round.file.fileTimeKey || fileNameTimestamp(round.file.name)?.key || "";
+        if (!records.length) { issues.push(`${round.stage} 没有测试记录`); valid = false; }
+        if (previousTime && time && time < previousTime) { issues.push("轮次与文件时间顺序冲突"); valid = false; }
+        if (!isInitial && ((previousRank === -1 && round.rank > 1) || (previousRank >= 0 && round.rank !== previousRank + 1))) {
+          issues.push("复测轮次不连续，不能将缺失轮次推为遗失"); valid = false;
+        }
+        const seen = new Set();
+        for (const record of records) {
+          if (!clean(record.serial)) continue;
+          const key = JSON.stringify([record.site, record.serial]);
+          if (seen.has(key)) { issues.push(`${round.stage} 存在重复 Site/Serial，需核对投入`); valid = false; break; }
+          seen.add(key);
+        }
+        if (delta !== null && delta < 0) { issues.push(`${round.stage} 投入比上轮 Fail 多 ${-delta}，不能作为负遗失抵扣`); valid = false; }
+        steps.push({ fileName: round.file.name, stage: round.stage, total: records.length, pass, fail, delta });
+        output += pass;
+        if (isInitial) { result.input = records.length; result.initialPass = pass; result.emptySeal = records.filter(record => record.isEmptySeal).length; }
+        else { recovered += pass; if (delta !== null && delta > 0) gap += delta; }
+        previousFail = fail;
+        previousRank = round.rank;
+        if (time) previousTime = time;
+      }
+      if (initials.length !== 1) { result.input = null; result.initialPass = null; }
+      if (valid && result.input > 0) {
+        Object.assign(result, { recovered, output, remaining: previousFail, gap, yield: output / result.input });
+        const effectiveInput = result.input - result.emptySeal;
+        result.yieldWithoutEmptySeal = effectiveInput > 0 && output <= effectiveInput ? output / effectiveInput : null;
+        if (output > effectiveInput) issues.push("累计通过超过扣空封投入，无法计算不包含空封良率");
+        if (result.input !== output + previousFail + gap) throw new Error("子批次数量核对失败");
+      }
+      return result;
+    });
+    const parentMap = new Map();
+    for (const lot of lots.filter((lot) => lot.applicable)) {
+      const key = JSON.stringify([lot.product, lot.customerLot, lot.product && lot.customerLot ? "" : lot.id]);
+      if (!parentMap.has(key)) parentMap.set(key, { product: lot.product, customerLot: lot.customerLot, lots: [] });
+      parentMap.get(key).lots.push(lot);
+    }
+    const parents = [...parentMap.values()].map((parent) => {
+      const validLots = parent.lots.filter((lot) => lot.yield !== null);
+      const complete = validLots.length === parent.lots.length;
+      const sum = (key) => validLots.reduce((n, lot) => n + lot[key], 0);
+      const input = sum("input"), output = sum("output");
+      return { ...parent, complete, input, output, recovered: sum("recovered"), remaining: sum("remaining"), gap: sum("gap"),
+        emptySeal: sum("emptySeal"),
+        yieldWithoutEmptySeal: complete && input > sum("emptySeal") && validLots.every(lot => lot.yieldWithoutEmptySeal !== null || lot.input === lot.emptySeal && lot.output === 0) ? output / (input - sum("emptySeal")) : null,
+        pending: parent.lots.some((lot) => lot.issues.length),
+        yield: complete && input ? output / input : null };
+    });
+    return { lots, parents };
   }
 
   function getValue(file, record, testName) {
@@ -1873,6 +2034,7 @@
 
   function factoryFileRole(file) {
     if (file?.kind === "summary" || file?.format === "Summary") return "summary";
+    if (file?.dataKind === "loop" || file?.format === "Loop XLSX") return "loop";
     const name = String(file?.name || "").replace(/\\/g, "/").split("/").pop() || "";
     if (/(?:^|[_.-])QA(?:[_.-]|$)/i.test(name)) return "qa";
     if (file?.isRetest || String(file?.stage || "").toUpperCase().startsWith("RT")) return "retest";
@@ -1918,6 +2080,7 @@
       retest: [],
       qa: [],
       disposition: [],
+      loop: [],
     };
     selectedFiles.forEach((file) => {
       const role = factoryFileRole(file);
@@ -1936,6 +2099,7 @@
     if (retest.total) warnings.push(`发现 ${retest.total.toLocaleString("zh-CN")} 条复测事件；缺少跨文件唯一产品 ID，暂不自动覆盖初测结果。`);
     if (disposition.total) warnings.push(`发现 ${disposition.total.toLocaleString("zh-CN")} 条最终处置 / BIN 文件记录；需确认流程规则后才能并入最终结果。`);
     if (qa.total) warnings.push(`已从工厂口径排除 ${qa.total.toLocaleString("zh-CN")} 条 QA 验证记录。`);
+    if (roleGroups.loop.length) warnings.push(`已从工厂投入口径排除 ${roleGroups.loop.length.toLocaleString("zh-CN")} 个 Loop 循环测试文件。`);
     if (initial.missingHbin) warnings.push(`初测中有 ${initial.missingHbin.toLocaleString("zh-CN")} 条记录没有 HBin，已按原 Pass/Fail 兼容归类。`);
     warnings.push("当前有效投入取初测 CSV 记录数，属于估算口径；如与 MES / 工厂投入不一致，应以工厂投入为准。");
 
@@ -1988,7 +2152,7 @@
 
   function analyzeProductionFlow(files, factoryReports = [], overrides = {}) {
     const selectedFiles = sortFilesChronologically(files);
-    const roleGroups = { initial: [], retest: [], qa: [], disposition: [] };
+    const roleGroups = { initial: [], retest: [], qa: [], disposition: [], loop: [] };
     selectedFiles.forEach((file) => {
       const role = factoryFileRole(file);
       if (roleGroups[role]) roleGroups[role].push(file);
@@ -2081,10 +2245,35 @@
     };
   }
 
+  // Calibrated against the supplied LX3418 ETS and LX3418C PowerTECH samples.
+  // Keep this classification separate from tester Pass/Fail and yield denominators.
+  function classifyEmptySeals(file) {
+    const device = clean(file.metadata?.product_model || file.metadata?.device || file.metadata?.["family name"]);
+    const supported = /^LX3418(?:C)?$/i.test(device);
+    const targets = file.format === "ETS"
+      ? { VDD_OS: -1.982, V1_OS: -2.065, V2_OS: -2.058, V3_OS: -2.023 }
+      : file.format === "PowerTECH"
+        ? { OS_VDD: -2.9, OS_V1: -2.9, OS_V2: -2.9, OS_V3: -2.9 } : {};
+    const tests = supported && !["qa", "loop"].includes(factoryFileRole(file))
+      ? (file.tests || []).filter(test => Object.hasOwn(targets, test.name.toUpperCase()) && clean(test.unit).toUpperCase() === "V") : [];
+    for (const record of file.records || []) {
+      const pins = new Set();
+      for (const test of tests) {
+        const value = record.values[test.valueIndex];
+        if (Number.isFinite(value) && Math.abs(value - targets[test.name.toUpperCase()]) <= 0.05 + 1e-9) pins.add(test.name.toUpperCase());
+      }
+      record.emptySealOsCount = pins.size;
+      record.isEmptySeal = pins.size >= 2;
+    }
+  }
+
   function analyze(files, filterId = "all") {
     const selectedFiles = selectFiles(files, filterId);
+    selectedFiles.forEach(classifyEmptySeals);
     const records = selectedFiles.flatMap((file) => file.records);
     const passRecords = records.filter((record) => record.isPass);
+    const loopFileIds = new Set(selectedFiles.filter((file) => file.dataKind === "loop").map((file) => file.id));
+    const stabilityRecords = records.filter((record) => record.isPass || loopFileIds.has(record.fileId));
     const failRecords = records.filter((record) => !record.isPass);
     const failStats = buildFailStats(failRecords, records.length);
     const capacity = calculateCapacityMetrics(selectedFiles);
@@ -2092,7 +2281,9 @@
       selectedFiles,
       records,
       passRecords,
+      stabilityRecords,
       failRecords,
+      emptySeal: records.filter(record => record.isEmptySeal).length,
       total: records.length,
       pass: passRecords.length,
       fail: failRecords.length,
@@ -2100,8 +2291,8 @@
       ...capacity,
       failStats,
       yieldTrend: buildYieldTrend(records),
-      stability: calculateStability(selectedFiles, passRecords),
-      fileSummaries: sortFilesChronologically(files).map(summarizeFile),
+      stability: calculateStability(selectedFiles, stabilityRecords),
+      fileSummaries: sortFilesChronologically(filterId.startsWith("lot:") ? selectedFiles : files).map(summarizeFile),
     };
   }
 
@@ -2109,7 +2300,7 @@
     const fileMap = new Map(analysis.selectedFiles.map((file) => [file.id, file]));
     const stability = analysis.stability.find((item) => item.name === testName) || null;
     const points = [];
-    analysis.passRecords.forEach((record, index) => {
+    (analysis.stabilityRecords || analysis.passRecords).forEach((record, index) => {
       const file = fileMap.get(record.fileId);
       const value = file ? getValue(file, record, testName) : null;
       if (value !== null) {
@@ -2264,6 +2455,9 @@
   }
 
   return {
+    classifyEmptySeals,
+    groupSubLots,
+    analyzeSubLots,
     aggregateSummaryReports,
     analyze,
     analyzeFactory,
@@ -2280,6 +2474,7 @@
     parseCsv,
     parseFtFileText,
     parseFactoryYieldWorkbook,
+    parseXlsxWorkbook,
     parseSummaryReportText,
     simulateLimitYield,
     sortFilesChronologically,

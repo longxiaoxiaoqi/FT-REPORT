@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>FT 数据分析工作台</title>
-  <link rel="stylesheet" href="styles.css?v=1.48.0">
-  <script src="ft-core.js?v=1.44.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.53.0">
+  <script src="ft-core.js?v=1.53.0" defer></script>
   <script src="sevenzip-loader.js?v=1.21.0" defer></script>
-  <script src="app.js?v=1.48.0" defer></script>
+  <script src="app.js?v=1.53.0" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -25,7 +25,7 @@
       <input id="fileInput" type="file" accept=".csv,.xlsx,.zip,.7z,.rar,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-7z-compressed,application/vnd.rar,application/x-rar-compressed" multiple hidden>
       <div class="drop-icon" aria-hidden="true">DATA</div>
       <div>
-        <h2>将测试 CSV、工厂良率 XLSX、压缩包或文件夹拖到这里</h2>
+        <h2>将测试 CSV、Loop XLSX、工厂良率 XLSX、压缩包或文件夹拖到这里</h2>
         <p>拖入文件夹时会递归读取子目录中的支持文件</p>
       </div>
       <button id="browseButton" class="primary-button" type="button">选择 CSV / XLSX / 压缩包</button>
@@ -39,15 +39,14 @@
           <label>
             <span>分析范围</span>
             <select id="fileFilter">
-              <option value="all">全部明细 CSV 汇总</option>
+              <option value="all">全部测试明细汇总</option>
             </select>
           </label>
           <label>
-            <span>统计口径</span>
+            <span>分析模式</span>
             <select id="analysisMode">
-              <option value="events">测试事件口径</option>
-              <option value="initial">正式初测口径</option>
-              <option value="factory">工厂最终口径</option>
+              <option value="simple">简易模式</option>
+              <option value="professional">专业分析模式</option>
             </select>
           </label>
         </div>
@@ -58,6 +57,7 @@
         </div>
       </div>
 
+      <p id="modeHint" class="mode-hint"></p>
       <nav class="tabs" aria-label="分析视图">
         <button class="tab is-active" type="button" data-tab="overview" aria-selected="true">总览</button>
         <button class="tab" type="button" data-tab="distribution" aria-selected="false">Fail 分布</button>
@@ -70,6 +70,15 @@
 
       <section id="overviewPanel" class="tab-panel">
         <div id="summaryCards" class="summary-grid"></div>
+        <article id="batchYieldPanel" class="panel" hidden>
+          <div class="panel-header"><div><h2>子批次与总批次良率</h2><p>按产品、客户批号、子批号分组。以下为当前文件范围内的复测链试算；上方八张卡片仍统计测试事件。</p></div></div>
+          <div id="batchYieldContent" class="batch-yield-content"></div>
+        </article>
+        <article id="simpleImpactPanel" class="panel">
+          <div class="panel-header"><div><h2>哪些 Fail 影响了良率？</h2><p>按失效次数排序；良率损失 = 该项 Fail 次数 ÷ 当前总记录数，以百分点表示。</p></div></div>
+          <div id="simpleImpactContent" class="simple-impact-content"></div>
+          <button id="expandAnalysisButton" class="secondary-button" type="button">展开专业分析</button>
+        </article>
 
         <article id="factoryPanel" class="panel factory-panel" hidden>
           <div class="panel-header responsive-header">
@@ -297,8 +306,8 @@
         <article class="panel">
           <div class="panel-header responsive-header">
             <div>
-              <h2>Pass 参数趋势</h2>
-              <p>仅使用 SBIN=Pass 的记录，虚线为规格上下限</p>
+              <h2>参数稳定性趋势</h2>
+              <p>生产数据使用 Pass 记录；Loop 数据使用全部循环记录，虚线为规格上下限</p>
             </div>
             <label class="inline-field">
               <span>测试项</span>
@@ -307,7 +316,7 @@
           </div>
           <div id="selectedTestStats" class="metric-strip"></div>
           <div class="chart-wrap chart-wide">
-            <canvas id="parameterChart" role="img" aria-label="Pass 参数趋势图"></canvas>
+            <canvas id="parameterChart" role="img" aria-label="参数稳定性趋势图"></canvas>
           </div>
         </article>
 
@@ -328,7 +337,7 @@
                 <tr>
                   <th>测试项</th>
                   <th>状态</th>
-                  <th>Pass 样本</th>
+                  <th>分析样本</th>
                   <th>均值</th>
                   <th>标准差</th>
                   <th>Ppk</th>
@@ -533,7 +542,7 @@
 
   <footer>
     <span>本地离线分析 · 不上传测试数据</span>
-    <span id="versionText">v1.48</span>
+    <span id="versionText">v1.54</span>
   </footer>
 </body>
 </html>

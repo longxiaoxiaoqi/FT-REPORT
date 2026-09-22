@@ -2077,6 +2077,9 @@ footer {
     gap: 8px;
   }
 
+  .toolbar-fields > label:first-child { flex: 0 1 auto; }
+  #fileFilter { width: 100%; max-width: 100%; }
+
   .fail-focus-toolbar,
   .fail-focus-actions {
     align-items: stretch;
@@ -2193,6 +2196,29 @@ footer {
   .chart-wrap {
     padding-inline: 10px;
   }
+}
+
+.mode-hint { color: var(--muted); line-height: 1.7; margin: 12px 0; }
+.batch-yield-content { padding: 0 20px 20px; }
+.batch-total { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 24px; padding: 16px; margin-bottom: 10px; background: var(--surface-2); border-radius: 10px; }
+.batch-total b { font-size: 24px; color: var(--accent); }
+.batch-yield-content td { vertical-align: top; }
+.batch-yield-content summary { cursor: pointer; white-space: normal; min-width: 180px; max-width: 350px; }
+.batch-chain { max-width: 500px; white-space: normal; overflow-wrap: anywhere; }
+.simple-mode #overviewPanel > .two-column,
+.simple-mode .fail-focus-panel,
+.simple-mode #summaryReportPanel,
+.tab[hidden] { display: none !important; }
+.simple-impact-content { padding: 0 20px 16px; }
+#expandAnalysisButton { margin: 0 20px 20px; }
+.impact-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(100px, 2fr) auto; align-items: center; gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--border); }
+.impact-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.impact-row span { display: block; color: var(--muted); margin-top: 6px; font-size: 13px; }
+.impact-bar { background: var(--border); height: 12px; border-radius: 6px; overflow: hidden; }
+.impact-bar i { display: block; background: #e15c55; height: 100%; border-radius: inherit; }
+@media (max-width: 700px) {
+  .simple-mode .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .impact-row { grid-template-columns: 1fr; gap: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
