@@ -1520,16 +1520,39 @@
         }
         rounds.push({ file, stage, rank: stage.startsWith("FT") ? -1 : stage === "RT" ? 0 : Number(stage.slice(2)) });
       }
+      // Same-stage fragments may merge only with compatible schemas/programs and
+      // non-overlapping Site/Serial identities. Restarted serials remain ambiguous.
+      const byStage = new Map();
+      for (const round of rounds) {
+        if (!byStage.has(round.stage)) byStage.set(round.stage, []);
+        byStage.get(round.stage).push(round);
+      }
+      const mergedRounds = [];
+      let fragmentsValid = true;
+      for (const fragments of byStage.values()) {
+        const first = fragments[0];
+        const schema = file => JSON.stringify([file.format, file.metadata?.program_name || file.metadata?.["prog name"] || "", file.tests]);
+        if (fragments.length > 1 && fragments.some(item => schema(item.file) !== schema(first.file))) {
+          issues.push(`${first.stage} 分片测试项或程序不一致，不能合并`); fragmentsValid = false;
+        }
+        const records = fragments.flatMap(item => item.file.records || []);
+        if (fragments.length > 1 && records.some(record => !clean(record.serial) || !clean(record.site))) {
+          issues.push(`${first.stage} 分片缺少 Site/Serial，不能安全合并`); fragmentsValid = false;
+        }
+        const times = fragments.map(item => item.file.fileTimeKey || fileNameTimestamp(item.file.name)?.key || "").filter(Boolean).sort();
+        mergedRounds.push({ ...first, fragmentCount: fragments.length, endTime: times.at(-1) || "",
+          file: { ...first.file, name: fragments.map(item => item.file.name).join("；"), records, fileTimeKey: times[0] || "" } });
+      }
       const result = { ...group, steps, excluded, pending, issues, applicable: rounds.length > 0 || pending.length > 0,
-        input: null, initialPass: null, recovered: null, output: null, remaining: null, gap: null, yield: null, emptySeal: null, yieldWithoutEmptySeal: null, provisional: true };
+        input: null, initialPass: null, recovered: null, output: null, remaining: null, gap: null, yield: null, emptySeal: null, finalStage: "", yieldWithoutEmptySeal: null, provisional: true };
       if (!result.applicable) return result;
       if (pending.length) issues.push(`${pending.length} 个 BIN / 阶段不明文件待确认，未计入恢复`);
       if (!group.lot) issues.push("缺少子批号，不能关联复测");
-      const initials = rounds.filter((round) => round.rank === -1);
+      const initials = mergedRounds.filter((round) => round.rank === -1);
       if (initials.length !== 1) issues.push(initials.length ? "存在多个初测文件，需确认分片或重复测试" : "缺少初测文件");
-      const retests = rounds.filter((round) => round.rank >= 0).sort((a, b) => a.rank - b.rank);
+      const retests = mergedRounds.filter((round) => round.rank >= 0).sort((a, b) => a.rank - b.rank);
       if (new Set(retests.map((round) => round.rank)).size !== retests.length) issues.push("同一复测轮次存在多个文件，需确认分片或重复测试");
-      let valid = Boolean(group.lot) && initials.length === 1 && new Set(retests.map((round) => round.rank)).size === retests.length;
+      let valid = fragmentsValid && Boolean(group.lot) && initials.length === 1 && new Set(retests.map((round) => round.rank)).size === retests.length;
       let previousFail = null;
       let previousRank = null;
       let previousTime = "";
@@ -1539,7 +1562,8 @@
         const pass = records.reduce((sum, record) => sum + Number(Boolean(record.isPass)), 0);
         const fail = records.length - pass;
         const isInitial = round.rank === -1;
-        const delta = isInitial || previousFail === null ? null : previousFail - records.length;
+        const contiguous = isInitial || previousRank === -1 && round.rank <= 1 || previousRank >= 0 && round.rank === previousRank + 1;
+        const delta = isInitial || previousFail === null || !contiguous ? null : previousFail - records.length;
         const time = round.file.fileTimeKey || fileNameTimestamp(round.file.name)?.key || "";
         if (!records.length) { issues.push(`${round.stage} 没有测试记录`); valid = false; }
         if (previousTime && time && time < previousTime) { issues.push("轮次与文件时间顺序冲突"); valid = false; }
@@ -1554,13 +1578,16 @@
           seen.add(key);
         }
         if (delta !== null && delta < 0) { issues.push(`${round.stage} 投入比上轮 Fail 多 ${-delta}，不能作为负遗失抵扣`); valid = false; }
-        steps.push({ fileName: round.file.name, stage: round.stage, total: records.length, pass, fail, delta });
+        const emptySeal = records.filter(record => record.isEmptySeal).length;
+        steps.push({ fileName: round.file.name, stage: round.stage, fragmentCount: round.fragmentCount, total: records.length, pass, fail, delta, emptySeal });
+        result.finalStage = round.stage;
+        result.emptySeal = emptySeal;
         output += pass;
-        if (isInitial) { result.input = records.length; result.initialPass = pass; result.emptySeal = records.filter(record => record.isEmptySeal).length; }
+        if (isInitial) { result.input = records.length; result.initialPass = pass; }
         else { recovered += pass; if (delta !== null && delta > 0) gap += delta; }
         previousFail = fail;
         previousRank = round.rank;
-        if (time) previousTime = time;
+        if (time) previousTime = round.endTime || time;
       }
       if (initials.length !== 1) { result.input = null; result.initialPass = null; }
       if (valid && result.input > 0) {

@@ -55,3 +55,25 @@ test('rejects reversed chronology and treats placeholder lots as unknown', () =>
   assert.equal(Core.analyzeSubLots([ft,rt]).lots[0].yield,null);
   assert.equal(Core.groupSubLots([file('N/A','FT',10,8),file('N/A','RT',2,1)]).length,2);
 });
+test('merges compatible same-round fragments and rejects overlapping identities', () => {
+  const a=file('A','FT',5,3), b=file('A','FT',5,4,{id:'fragment'});
+  b.records.forEach((r,i)=>r.serial=String(i+6));
+  const rt=file('A','RT',3,2);
+  const lot=Core.analyzeSubLots([rt,b,a]).lots[0];
+  assert.equal(lot.input,10); assert.equal(lot.output,9); assert.equal(lot.steps[0].fragmentCount,2);
+  b.records[0].serial='1'; assert.equal(Core.analyzeSubLots([a,b,rt]).lots[0].yield,null);
+  b.records[0].serial=''; assert.equal(Core.analyzeSubLots([a,b,rt]).lots[0].yield,null);
+});
+test('incompatible fragment programs or overlapping stage time ranges block yield', () => {
+  const a=file('A','FT',5,3,{fileTimeKey:'20260923090000'}), b=file('A','FT',5,4,{fileTimeKey:'20260923110000'});
+  b.records.forEach((r,i)=>r.serial=String(i+6));
+  const rt=file('A','RT',3,2,{fileTimeKey:'20260923100000'});
+  assert.equal(Core.analyzeSubLots([a,b,rt]).lots[0].yield,null);
+  b.metadata['prog name']='different';
+  assert.match(Core.analyzeSubLots([a,b]).lots[0].issues.join(' '),/程序不一致/);
+});
+test('missing rounds have no inferred cross-round loss', () => {
+  const lot=Core.analyzeSubLots([file('A','FT',10,5),file('A','RT2',2,1)]).lots[0];
+  assert.equal(lot.yield,null); assert.equal(lot.gap,null); assert.equal(lot.steps[1].delta,null);
+  assert.equal(lot.finalStage,'RT2');
+});

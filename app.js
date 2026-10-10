@@ -5,7 +5,11 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.54", current: true, title: "空封自动识别",
+      version: "v1.55", current: true, title: "末轮空封与复测链完整性",
+      changes: ["有 RT 时按当前最高 RT 轮次统计空封，无 RT 时使用初测空封；分母不累加各轮空封。", "CSV 按内容与批次阶段去重；兼容且 Site/Serial 不重叠的同轮分片自动合并。", "显示当前截止轮次和逐轮空封；缺轮不推算跨轮遗失。"],
+    },
+    {
+      version: "v1.54", current: false, title: "空封自动识别",
       changes: ["已验证的 LX3418 ETS / LX3418C PowerTECH 数据中，至少两个前置 OS 项命中特征电压（±0.05V）标为空封。", "空封数量、明细标记与导出同步显示；同时输出包含空封与不包含空封的批次良率。"],
     },
     {
@@ -739,10 +743,9 @@
     let addedLoopDetails = 0;
     let addedSummaries = 0;
     let addedFactoryReports = 0;
+    let duplicateFiles = 0;
     for (const file of csvFiles) {
       const signature = file.signature;
-      if (state.files.some((item) => item.signature === signature)
-        || state.summaryReports.some((item) => item.signature === signature)) continue;
       try {
         const text = await readTextWithEncoding(file);
         const id = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -750,6 +753,16 @@
         const parsed = isSummary
           ? Core.parseSummaryReportText(text, file.name, id)
           : Core.parseFtFileText(text, file.name, id);
+        const normalizedText = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalizedText));
+        const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+        // Filename may supply the stage, so identical measurements in FT and RT
+        // are not interchangeable. Archive path and modification time are ignored.
+        parsed.contentKey = JSON.stringify([isSummary ? "summary" : "detail", parsed.stage, Core.factoryFileRole(parsed), hash]);
+        if ([...state.files, ...state.summaryReports].some(item => item.contentKey === parsed.contentKey)) {
+          duplicateFiles += 1;
+          continue;
+        }
         parsed.signature = signature;
         parsed.size = file.size;
         parsed.sourceArchive = file.sourceArchive || "";
@@ -815,9 +828,9 @@
     } else if (added) {
       const summaryHint = addedSummaries ? "；Summary 已独立收纳，可在“分析范围”中选择查看" : "";
       const factoryHint = addedFactoryReports ? "；工厂良率报告已作为最终良率锚点" : "";
-      showMessage(`已载入 ${loadedText}，共 ${formatInteger(state.analysis.total)} 条测试事件记录${summaryHint}${factoryHint}。`, "success");
+      showMessage(`已载入 ${loadedText}，共 ${formatInteger(state.analysis.total)} 条测试事件记录${summaryHint}${factoryHint}${duplicateFiles ? `；跳过 ${duplicateFiles} 个内容重复文件` : ""}。`, "success");
     }
-    else showMessage("这些文件已经载入，无需重复添加。", "error");
+    else showMessage(duplicateFiles ? `跳过 ${duplicateFiles} 个内容重复文件，无需重复添加。` : "这些文件已经载入，无需重复添加。", "success");
   }
 
   async function readTextWithEncoding(file) {
@@ -907,24 +920,24 @@
     if (!data?.lots.length) { el.batchYieldContent.innerHTML = ""; return; }
     const number = (value) => value === null ? "待确认" : formatInteger(value);
     const ratio = (value) => value === null ? "数据不足" : formatYieldPrecise(value);
-    const parents = data.parents.map((parent) => `<div class="batch-total"><strong>${escapeHtml(parent.product || "产品未记录")} / ${escapeHtml(parent.customerLot || "客户批号未记录（不跨子批汇总）")}</strong><span>包含空封良率 <b>${ratio(parent.yield)}</b></span><span>不包含空封良率 <b>${ratio(parent.yieldWithoutEmptySeal)}</b></span><span>初测空封 ${number(parent.emptySeal)}</span><span>${parent.complete ? "累计通过 / 初测投入" : "可核对子批小计（非完整总批）"}：${number(parent.output)} / ${number(parent.input)}</span><span>待确认遗失差额 ${number(parent.gap)}</span>${parent.pending ? '<span>存在未纳入文件或数据异常，请查看下方说明</span>' : ""}</div>`).join("");
+    const parents = data.parents.map((parent) => `<div class="batch-total"><strong>${escapeHtml(parent.product || "产品未记录")} / ${escapeHtml(parent.customerLot || "客户批号未记录（不跨子批汇总）")}</strong><span>包含空封良率 <b>${ratio(parent.yield)}</b></span><span>不包含空封良率 <b>${ratio(parent.yieldWithoutEmptySeal)}</b></span><span>末轮空封 ${number(parent.emptySeal)}</span><span>${parent.complete ? "累计通过 / 初测投入" : "可核对子批小计（非完整总批）"}：${number(parent.output)} / ${number(parent.input)}</span><span>待确认遗失差额 ${number(parent.gap)}</span>${parent.pending ? '<span>存在未纳入文件或数据异常，请查看下方说明</span>' : ""}</div>`).join("");
     const lots = data.lots.map((lot) => {
       const status = !lot.applicable ? "仅 QA / Loop，不参与生产良率" : lot.issues.length ? lot.issues.join("；") : "按上轮全部 Fail 进入下轮的假设核对";
-      const steps = lot.steps.map((step) => `<tr><td>${escapeHtml(step.stage)}</td><td>${escapeHtml(step.fileName)}</td><td>${step.total}</td><td>${step.pass}</td><td>${step.fail}</td><td>${step.delta === null ? "—" : step.delta}</td></tr>`).join("");
-      return `<tr><td>${escapeHtml(lot.lot || "子批号缺失")}<br><small>${escapeHtml(lot.product)} / ${escapeHtml(lot.customerLot)}</small></td><td>${number(lot.input)}</td><td>${number(lot.recovered)}</td><td>${number(lot.output)}</td><td>${number(lot.remaining)}</td><td>${number(lot.gap)}</td><td>${number(lot.emptySeal)}</td><td><strong>${ratio(lot.yield)}</strong></td><td><strong>${ratio(lot.yieldWithoutEmptySeal)}</strong></td><td><details><summary>${escapeHtml(status)} · 查看链路</summary><div class="batch-chain"><div class="table-wrap"><table><thead><tr><th>轮次</th><th>来源文件</th><th>投入</th><th>Pass</th><th>Fail</th><th>上轮 Fail − 本轮投入</th></tr></thead><tbody>${steps}</tbody></table></div>${lot.pending.length ? `<p>未纳入恢复：${lot.pending.map((file) => escapeHtml(file.name)).join("；")}</p>` : ""}${lot.excluded.length ? `<p>QA / Loop 等排除文件：${lot.excluded.map((file) => escapeHtml(file.name)).join("；")}</p>` : ""}</div></details></td></tr>`;
+      const steps = lot.steps.map((step) => `<tr><td>${escapeHtml(step.stage)}</td><td>${escapeHtml(step.fileName)}</td><td>${step.total}</td><td>${step.pass}</td><td>${step.fail}</td><td>${step.delta === null ? "—" : step.delta}</td><td>${step.emptySeal}</td><td>${step.fragmentCount}</td></tr>`).join("");
+      return `<tr><td>${escapeHtml(lot.lot || "子批号缺失")}<br><small>${escapeHtml(lot.product)} / ${escapeHtml(lot.customerLot)}</small></td><td>${number(lot.input)}</td><td>${number(lot.recovered)}</td><td>${number(lot.output)}</td><td>${number(lot.remaining)}</td><td>${number(lot.gap)}</td><td>${number(lot.emptySeal)}<br><small>当前截止 ${escapeHtml(lot.finalStage || "—")}</small></td><td><strong>${ratio(lot.yield)}</strong></td><td><strong>${ratio(lot.yieldWithoutEmptySeal)}</strong></td><td><details><summary>${escapeHtml(status)} · 查看链路</summary><div class="batch-chain"><div class="table-wrap"><table><thead><tr><th>轮次</th><th>来源文件</th><th>投入</th><th>Pass</th><th>Fail</th><th>上轮 Fail − 本轮投入</th><th>本轮空封</th><th>文件数</th></tr></thead><tbody>${steps}</tbody></table></div>${lot.pending.length ? `<p>未纳入恢复：${lot.pending.map((file) => escapeHtml(file.name)).join("；")}</p>` : ""}${lot.excluded.length ? `<p>QA / Loop 等排除文件：${lot.excluded.map((file) => escapeHtml(file.name)).join("；")}</p>` : ""}</div></details></td></tr>`;
     }).join("");
-    el.batchYieldContent.innerHTML = `${parents}<p class="mode-hint">空封识别：LX3418 系列已验证 ETS / PowerTECH 程序，至少两个前置 OS 命中特征电压，容差 ±0.05V。不包含空封良率 = 累计通过 ÷（初测投入 − 初测空封）；仅扣初测空封，复测不重复扣减。包含空封良率 =（初测 Pass + 各轮复测 Pass）÷ 初测投入；遗失差额保留在分母。假设每轮 Pass 不再复测，正差额暂不等于已确认掉料。BIN 文件不自动计入恢复。工厂投入和调机排除尚未确认时，初测投入使用 CSV 原始条数。</p><div class="table-wrap"><table><thead><tr><th>子批号</th><th>初测投入</th><th>复测恢复</th><th>累计通过</th><th>末轮 Fail</th><th>待确认遗失</th><th>初测空封</th><th>包含空封良率</th><th>不包含空封良率</th><th>核对说明</th></tr></thead><tbody>${lots}</tbody></table></div>`;
+    el.batchYieldContent.innerHTML = `${parents}<p class="mode-hint">空封识别：LX3418 系列已验证 ETS / PowerTECH 程序，至少两个前置 OS 命中特征电压，容差 ±0.05V。不包含空封良率 = 累计通过 ÷（初测投入 − 末轮空封）；有 RT 时取当前最高轮次 RT 空封，无 RT 时取初测空封，不累加各轮；当前截止轮次不代表已完成全部复测。包含空封良率 =（初测 Pass + 各轮复测 Pass）÷ 初测投入；遗失差额保留在分母。假设每轮 Pass 不再复测，正差额暂不等于已确认掉料。BIN 文件不自动计入恢复。工厂投入和调机排除尚未确认时，初测投入使用 CSV 原始条数。</p><div class="table-wrap"><table><thead><tr><th>子批号</th><th>初测投入</th><th>复测恢复</th><th>累计通过</th><th>末轮 Fail</th><th>待确认遗失</th><th>末轮空封</th><th>包含空封良率</th><th>不包含空封良率</th><th>核对说明</th></tr></thead><tbody>${lots}</tbody></table></div>`;
   }
 
   function appendBatchExport(rows) {
     if (!state.batchAnalysis?.lots.length) return;
     rows.push([], ["子批次良率试算", "假设各轮 Pass 退出复测；初测投入使用 CSV 条数；差额未确认物理遗失；BIN 文件未自动计入恢复"]);
-    rows.push(["产品", "客户批号", "子批号", "初测投入", "复测恢复", "累计通过", "末轮 Fail", "待确认遗失差额", "包含空封良率", "初测空封", "不包含空封良率", "说明"]);
-    for (const lot of state.batchAnalysis.lots) rows.push([lot.product, lot.customerLot, lot.lot || "缺失", lot.input, lot.recovered, lot.output, lot.remaining, lot.gap, lot.yield === null ? "待确认" : formatYieldPrecise(lot.yield), lot.emptySeal, lot.yieldWithoutEmptySeal === null ? "数据不足" : formatYieldPrecise(lot.yieldWithoutEmptySeal), !lot.applicable ? "非生产数据" : lot.issues.join("；") || "按全部 Fail 复测假设"]);
-    rows.push([], ["总批次试算（累计通过之和 / 初测投入之和）"], ["产品", "客户批号", "可核对投入", "可核对通过", "待确认遗失差额", "包含空封良率", "初测空封", "不包含空封良率", "状态"]);
+    rows.push(["产品", "客户批号", "子批号", "初测投入", "复测恢复", "累计通过", "末轮 Fail", "待确认遗失差额", "包含空封良率", "末轮空封", "不包含空封良率", "当前截止轮次", "说明"]);
+    for (const lot of state.batchAnalysis.lots) rows.push([lot.product, lot.customerLot, lot.lot || "缺失", lot.input, lot.recovered, lot.output, lot.remaining, lot.gap, lot.yield === null ? "待确认" : formatYieldPrecise(lot.yield), lot.emptySeal, lot.yieldWithoutEmptySeal === null ? "数据不足" : formatYieldPrecise(lot.yieldWithoutEmptySeal), lot.finalStage, !lot.applicable ? "非生产数据" : lot.issues.join("；") || "按全部 Fail 复测假设"]);
+    rows.push([], ["总批次试算（累计通过之和 / 初测投入之和）"], ["产品", "客户批号", "可核对投入", "可核对通过", "待确认遗失差额", "包含空封良率", "末轮空封", "不包含空封良率", "状态"]);
     for (const parent of state.batchAnalysis.parents) rows.push([parent.product, parent.customerLot, parent.input, parent.output, parent.gap, parent.yield === null ? "待确认" : formatYieldPrecise(parent.yield), parent.emptySeal, parent.yieldWithoutEmptySeal === null ? "数据不足" : formatYieldPrecise(parent.yieldWithoutEmptySeal), !parent.complete ? "含无法核对的子批次，小计非完整总批" : parent.pending ? "含待确认文件，截止明确链" : "全部 Fail 复测假设"]);
-    rows.push([], ["子批次轮次核对"], ["子批号", "轮次", "来源文件", "投入", "Pass", "Fail", "上轮 Fail 减本轮投入"]);
-    for (const lot of state.batchAnalysis.lots) for (const step of lot.steps) rows.push([lot.lot, step.stage, step.fileName, step.total, step.pass, step.fail, step.delta]);
+    rows.push([], ["子批次轮次核对"], ["子批号", "轮次", "来源文件", "投入", "Pass", "Fail", "上轮 Fail 减本轮投入", "本轮空封", "文件数"]);
+    for (const lot of state.batchAnalysis.lots) for (const step of lot.steps) rows.push([lot.lot, step.stage, step.fileName, step.total, step.pass, step.fail, step.delta, step.emptySeal, step.fragmentCount]);
     rows.push([], ["未计入复测链的文件"], ["子批号", "来源文件", "原因"]);
     for (const lot of state.batchAnalysis.lots) {
       for (const file of lot.pending) rows.push([lot.lot, file.name, "BIN 或阶段不明，流转待确认"]);
@@ -2159,7 +2172,7 @@
     rows.push(["分析范围", el.fileFilter.selectedOptions[0]?.textContent || selectedSummary || ""]);
     rows.push(["数据来源", summaryOnly ? "Summary 汇总报告（不含逐颗实测值）" : "逐颗明细 CSV"]);
     rows.push(["分析模式", state.analysisMode === "simple" ? "简易模式" : "专业分析模式"]);
-    rows.push(["空封测试记录数", summaryOnly ? "无实测值，无法识别" : a.emptySeal, "至少两个前置 OS 命中特征电压 ±0.05V；批次扣空封口径只扣初测空封"]);
+    rows.push(["空封测试记录数", summaryOnly ? "无实测值，无法识别" : a.emptySeal, "至少两个前置 OS 命中特征电压 ±0.05V；批次扣空封口径取各子批当前末轮空封，不累加各轮"]);
     appendBatchExport(rows);
     if (state.analysisMode === "simple") {
       rows.push(["产品名称", productSummary(summaryOnly, a).value]);

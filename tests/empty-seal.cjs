@@ -22,13 +22,23 @@ test('two distinct front OS pins, tolerance, missing values and POST exclusion',
   const p = Core.analyzeSubLots([f]).parents[0];
   assert.equal(p.yieldWithoutEmptySeal, 1/3);
 });
-test('only initial empty seals are deducted and all-empty yields are unavailable', () => {
+test('latest-round empty seals are deducted and all-empty yields are unavailable', () => {
   const ft=fixture('FT',['1,1,1,1,-0.8,-0.8,-0.8,-0.8','1,2,10,5,-2.9,-2.9,-2.9,-2.9']);
   const rt=fixture('RT',['1,1,10,5,-2.9,-2.9,-2.9,-2.9']);
   const p=Core.analyzeSubLots([ft,rt]).parents[0];
   assert.equal(p.emptySeal,1); assert.equal(p.yield,.5); assert.equal(p.yieldWithoutEmptySeal,1);
   assert.equal(Core.analyzeSubLots([fixture('FT',['1,1,10,5,-2.9,-2.9,-2.9,-2.9'])]).parents[0].yieldWithoutEmptySeal,null);
   ft.dataKind='loop'; Core.classifyEmptySeals(ft); assert.equal(ft.records.some(r=>r.isEmptySeal),false);
+});
+test('latest RT replaces initial empty count, independent of import order', () => {
+  const ft=fixture('FT',['1,1,1,1,-0.8,-0.8,-0.8,-0.8','1,2,10,5,-2.9,-2.9,-2.9,-2.9','1,3,10,5,-2.9,-2.9,-2.9,-2.9']);
+  const rt=fixture('RT',['1,1,1,1,-0.8,-0.8,-0.8,-0.8','1,2,10,5,-2.9,-2.9,-2.9,-2.9']);
+  const rt1=fixture('RT1',['1,1,1,1,-0.8,-0.8,-0.8,-0.8']);
+  const mid=Core.analyzeSubLots([rt,ft]).lots[0];
+  assert.equal(mid.emptySeal,1); assert.equal(mid.yieldWithoutEmptySeal,1); assert.equal(mid.finalStage,'RT');
+  const last=Core.analyzeSubLots([rt1,ft,rt]).lots[0];
+  assert.equal(last.emptySeal,0); assert.equal(last.yieldWithoutEmptySeal,1); assert.equal(last.finalStage,'RT1');
+  assert.deepEqual(last.steps.map(s=>s.emptySeal),[2,1,0]);
 });
 for (const [i,path] of (process.env.FT_EMPTY_SAMPLES || '').split('|').filter(Boolean).entries()) {
   test(`real empty seal sample ${i+1}`, () => {
