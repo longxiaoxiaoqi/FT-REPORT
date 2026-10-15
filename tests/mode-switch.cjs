@@ -35,9 +35,7 @@ const fs = require('node:fs');
       const durations = [];
       for (const mode of ['professional', 'simple', 'professional', 'simple']) {
         const start = performance.now();
-        const select = document.getElementById('analysisMode');
-        select.value = mode;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
+        document.querySelector('#analysisMode button[data-mode=' + mode + ']').click();
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         durations.push({ mode, ms: Math.round(performance.now() - start) });
       }
@@ -50,7 +48,7 @@ const fs = require('node:fs');
     await page.locator('#expandAnalysisButton').click();
     assert.equal(await page.evaluate(() => window.analysisCalls), 0);
     await page.locator('[data-tab="details"]').click();
-    await page.locator('#analysisMode').selectOption('simple');
+    await page.locator('#analysisMode button[data-mode="simple"]').click();
     assert.equal(await page.locator('#overviewPanel').isVisible(), true);
     assert.equal(await page.locator('#detailsPanel').isVisible(), false);
     const downloadPromise = page.waitForEvent('download');
@@ -62,10 +60,10 @@ const fs = require('node:fs');
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     // Data changes in professional mode must also refresh the cached simple view.
-    await page.locator('#analysisMode').selectOption('professional');
+    await page.locator('#analysisMode button[data-mode="professional"]').click();
     await page.locator('#clearButton').click();
     await page.locator('#fileInput').setInputFiles({ name: 'pass.csv', mimeType: 'text/csv', buffer: Buffer.from(header + '\n1,1,1,1,5') });
-    await page.locator('#analysisMode').selectOption('simple');
+    await page.locator('#analysisMode button[data-mode="simple"]').click();
     assert.match(await page.locator('#simpleImpactContent').innerText(), /全部通过/);
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ rows, timings, result: 'PASS: no reanalysis or DOM rebuild on mode switches; export, mobile layout, refreshed data and tab reset verified' }));

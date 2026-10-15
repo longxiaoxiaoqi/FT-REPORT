@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>FT 数据分析工作台</title>
-  <link rel="stylesheet" href="styles.css?v=1.53.0">
-  <script src="ft-core.js?v=1.53.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.56.0">
+  <script src="ft-core.js?v=1.56.0" defer></script>
   <script src="sevenzip-loader.js?v=1.21.0" defer></script>
-  <script src="app.js?v=1.53.0" defer></script>
+  <script src="app.js?v=1.56.0" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -42,13 +42,11 @@
               <option value="all">全部测试明细汇总</option>
             </select>
           </label>
-          <label>
-            <span>分析模式</span>
-            <select id="analysisMode">
-              <option value="simple">简易模式</option>
-              <option value="professional">专业分析模式</option>
-            </select>
-          </label>
+          <div id="analysisMode" class="mode-segment" role="group" aria-label="分析模式" data-mode="simple">
+            <span class="mode-segment-thumb" aria-hidden="true"></span>
+            <button type="button" data-mode="simple" aria-pressed="true">简易模式</button>
+            <button type="button" data-mode="professional" aria-pressed="false">专业模式</button>
+          </div>
         </div>
         <div class="toolbar-actions">
           <button id="exportButton" class="secondary-button" type="button">导出分析结果</button>
@@ -57,7 +55,6 @@
         </div>
       </div>
 
-      <p id="modeHint" class="mode-hint"></p>
       <nav class="tabs" aria-label="分析视图">
         <button class="tab is-active" type="button" data-tab="overview" aria-selected="true">总览</button>
         <button class="tab" type="button" data-tab="distribution" aria-selected="false">Fail 分布</button>
@@ -542,7 +539,7 @@
 
   <footer>
     <span>本地离线分析 · 不上传测试数据</span>
-    <span id="versionText">v1.55</span>
+    <span id="versionText">v1.56</span>
   </footer>
 </body>
 </html>

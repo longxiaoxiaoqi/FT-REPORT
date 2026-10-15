@@ -5,7 +5,11 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.55", current: true, title: "末轮空封与复测链完整性",
+      version: "v1.56", current: true, title: "界面统一与项目交接",
+      changes: ["简易 / 专业模式改为分段按钮，保留平滑切换及现有分析结果。", "Fail 分布左右区域独立滚动，按浏览器可用高度适配，并统一使用细圆角滚动条。", "精简导入错误提示，移除模式说明和批次面板展示；批次计算与导出保留。", "保留完整测试统计、良率模拟、顺序图与直方图；增加项目交接及业务规则文档。"],
+    },
+    {
+      version: "v1.55", current: false, title: "末轮空封与复测链完整性",
       changes: ["有 RT 时按当前最高 RT 轮次统计空封，无 RT 时使用初测空封；分母不累加各轮空封。", "CSV 按内容与批次阶段去重；兼容且 Site/Serial 不重叠的同轮分片自动合并。", "显示当前截止轮次和逐轮空封；缺轮不推算跨轮遗失。"],
     },
     {
@@ -394,7 +398,7 @@
   const el = {};
   const ids = [
     "batchYieldPanel", "batchYieldContent",
-    "modeHint", "simpleImpactPanel", "simpleImpactContent", "expandAnalysisButton",
+    "simpleImpactPanel", "simpleImpactContent", "expandAnalysisButton",
     "dropZone", "fileInput", "browseButton", "message", "workspace", "fileFilter", "analysisMode",
     "exportButton", "addFilesButton", "clearButton", "summaryCards", "paretoChart",
     "yieldChart", "yieldTrendHint", "failFocusContent", "testItemSelect", "selectedTestStats",
@@ -460,8 +464,9 @@
       state.detailPage = 1;
       analyzeAndRender();
     });
-    el.analysisMode.addEventListener("change", () => {
-      setAnalysisMode(el.analysisMode.value);
+    el.analysisMode.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-mode]");
+      if (button) setAnalysisMode(button.dataset.mode);
     });
     el.expandAnalysisButton.addEventListener("click", () => {
       setAnalysisMode("professional");
@@ -574,7 +579,28 @@
     });
 
     let resizeTimer = null;
+    const scrollbarTimers = new WeakMap();
+    document.addEventListener("scroll", (event) => {
+      const target = event.target === document ? document.documentElement : event.target;
+      if (!(target instanceof Element) || !target.matches("html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu")) return;
+      target.classList.add("is-scrolling");
+      clearTimeout(scrollbarTimers.get(target));
+      scrollbarTimers.set(target, setTimeout(() => {
+        target.classList.remove("is-scrolling");
+        scrollbarTimers.delete(target);
+      }, 700));
+    }, { capture: true, passive: true });
+    let distributionLayoutFrame = null;
+    const scheduleDistributionLayout = () => {
+      if (distributionLayoutFrame !== null) return;
+      distributionLayoutFrame = requestAnimationFrame(() => {
+        distributionLayoutFrame = null;
+        fitDistributionPanels();
+      });
+    };
+    window.addEventListener("scroll", scheduleDistributionLayout, { passive: true });
     window.addEventListener("resize", () => {
+      scheduleDistributionLayout();
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(drawVisibleCharts, 100);
     });
@@ -822,7 +848,7 @@
       addedSummaries ? `${addedSummaries} 个 Summary 汇总报告` : "",
       addedFactoryReports ? `${addedFactoryReports} 个工厂良率 XLSX` : "",
     ].filter(Boolean).join("、");
-    if (errors.length) showMessage(`已载入 ${loadedText || "0 个文件"}；${errors.join("；")}`, "error");
+    if (errors.length) showMessage(`已载入 ${loadedText || "0 个文件"}；${errors.length} 个文件未能导入。`, added ? "" : "error");
     else if (!state.files.length) {
       showMessage(`已载入 ${loadedText}；请继续添加测试明细文件进行匹配分析。`, "success");
     } else if (added) {
@@ -880,7 +906,6 @@
   function analyzeAndRender() {
     const summaryFilterId = state.filterId.startsWith("summary:") ? state.filterId.slice(8) : "";
     const detailFilterId = summaryFilterId ? "__summary_only__" : state.filterId;
-    el.analysisMode.disabled = false;
     el.analysisMode.title = "切换展示深度，不改变良率计算";
     state.analysis = Core.analyze(state.files, detailFilterId);
     state.batchAnalysis = Core.analyzeSubLots(state.analysis.selectedFiles);
@@ -916,7 +941,7 @@
 
   function renderBatchYield() {
     const data = state.batchAnalysis;
-    el.batchYieldPanel.hidden = !data?.lots.length;
+    el.batchYieldPanel.hidden = true;
     if (!data?.lots.length) { el.batchYieldContent.innerHTML = ""; return; }
     const number = (value) => value === null ? "待确认" : formatInteger(value);
     const ratio = (value) => value === null ? "数据不足" : formatYieldPrecise(value);
@@ -958,8 +983,8 @@
   }
 
   function setAnalysisMode(mode) {
+    if (state.analysisMode === mode) return;
     state.analysisMode = mode === "professional" ? "professional" : "simple";
-    el.analysisMode.value = state.analysisMode;
     // The mode changes presentation only. Keep analysis, selections and caches intact.
     applyAnalysisMode();
     requestAnimationFrame(drawVisibleCharts);
@@ -967,15 +992,16 @@
 
   function applyAnalysisMode() {
     const simple = state.analysisMode === "simple";
+    el.analysisMode.dataset.mode = state.analysisMode;
+    el.analysisMode.querySelectorAll("button[data-mode]").forEach(button => {
+      button.setAttribute("aria-pressed", String(button.dataset.mode === state.analysisMode));
+    });
     el.workspace.classList.toggle("simple-mode", simple);
     el.simpleImpactPanel.hidden = !simple;
     document.querySelectorAll(".tab[data-tab]").forEach((button) => {
       button.hidden = simple && button.dataset.tab !== "overview";
     });
     if (simple && state.activeTab !== "overview") switchTab("overview");
-    el.modeHint.textContent = simple
-      ? "简易模式 · 先看良率，再看主要 Fail 的影响。复测和 Loop 按测试次数统计，不代表唯一产品数。"
-      : "专业分析模式 · 展开分布、稳定性、明细、文件对比和数据审计；良率仍按当前测试记录计算。";
     el.exportButton.textContent = simple ? "导出简易报告" : "导出分析结果";
   }
 
@@ -2134,12 +2160,26 @@
       updateDistributionTestSelect();
       renderDistributionFailList();
       renderSelectedDistribution();
+      fitDistributionPanels();
     } else if (tabName === "stability") {
       updateTestSelect();
       renderStabilityTable();
       renderSelectedTest();
     }
     requestAnimationFrame(drawVisibleCharts);
+  }
+
+  function fitDistributionPanels() {
+    if (state.activeTab !== "distribution") return;
+    const layout = document.querySelector(".distribution-layout");
+    if (!layout || layout.closest(".tab-panel").hidden) return;
+    if (window.innerWidth <= 980) {
+      layout.style.removeProperty("--distribution-pane-height");
+      return;
+    }
+    const top = Math.max(0, layout.getBoundingClientRect().top);
+    const height = Math.max(180, Math.floor(window.innerHeight - top - 16));
+    layout.style.setProperty("--distribution-pane-height", `${height}px`);
   }
 
   function openFailDistribution(reason) {

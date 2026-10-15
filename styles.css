@@ -49,6 +49,47 @@ html {
   background: var(--bg);
 }
 
+/* Keep native dragging and independent scrolling, with quiet overlay-like chrome. */
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu) {
+  --scroll-thumb: color-mix(in srgb, var(--muted) 28%, transparent);
+}
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu):is(:hover, :focus-within, .is-scrolling) {
+  --scroll-thumb: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu)::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu)::-webkit-scrollbar-track {
+  background: transparent;
+}
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu)::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+}
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu)::-webkit-scrollbar-thumb:active {
+  background: var(--muted);
+}
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu)::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+:is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu)::-webkit-scrollbar-corner {
+  background: transparent;
+}
+@supports not selector(::-webkit-scrollbar) {
+  :is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
+  }
+}
+@media (forced-colors: active) {
+  :is(html, .distribution-list-panel, .distribution-chart-column, .distribution-table-wrap, .distribution-test-menu) {
+    --scroll-thumb: CanvasText;
+  }
+}
+
 body {
   margin: 0;
   color: var(--text);
@@ -292,6 +333,51 @@ footer {
 .toolbar-fields > label:first-child {
   flex: 1 1 720px;
   min-width: 0;
+}
+
+.mode-segment {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  flex: 0 0 auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-2);
+  isolation: isolate;
+}
+
+.mode-segment-thumb {
+  position: absolute;
+  inset: 4px auto 4px 4px;
+  width: calc((100% - 8px) / 2);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+  transition: transform 280ms cubic-bezier(.22, 1, .36, 1);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.mode-segment[data-mode="professional"] .mode-segment-thumb {
+  transform: translateX(100%);
+}
+
+.mode-segment button {
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+  font-weight: 600;
+  transition: color 180ms ease;
+}
+
+.mode-segment button[aria-pressed="true"] { color: var(--accent); }
+.mode-segment button:hover { background: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .mode-segment-thumb, .mode-segment button { transition: none; }
 }
 
 #fileFilter {
@@ -878,6 +964,24 @@ input.is-invalid {
 .distribution-table-wrap {
   max-height: 820px;
   overflow: auto;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 981px) {
+  .distribution-layout > .distribution-list-panel,
+  .distribution-layout > .distribution-chart-column {
+    height: var(--distribution-pane-height, calc(100dvh - 160px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    min-height: 0;
+  }
+
+  .distribution-list-panel { position: static; }
+  .distribution-list-panel .distribution-table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .distribution-table-wrap table {
