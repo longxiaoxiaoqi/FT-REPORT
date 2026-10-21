@@ -5,7 +5,131 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.56", current: true, title: "界面统一与项目交接",
+      version: "v1.87", current: true, title: "精简简易模式说明",
+      changes: ["删除哪些 Fail 影响了良率标题下的排序与计算说明，收起该行空间。"],
+    },
+    {
+      version: "v1.86", current: false, title: "导出报告移除逐条 Fail 明细",
+      changes: ["导出报告保留汇总与参数稳定性，移除逐条 Fail 明细；页面仍可查看和筛选 Fail 记录。"],
+    },
+    {
+      version: "v1.85", current: false, title: "总览指标说明澄清",
+      changes: ["Pass 卡片注明数据良率及非批次真实良率，首要 Fail 说明仅保留占比及已有空封备注。", "UPH 与日产出标题增加理论标识，数值计算保持原有口径。"],
+    },
+    {
+      version: "v1.84", current: false, title: "明细按钮与工具栏共用高度",
+      changes: ["查看 Fail 明细与顶部导入、继续添加、导出及清空按钮共用 36px 高度，并固定上下限，避免按钮被拉高。"],
+    },
+    {
+      version: "v1.83", current: false, title: "导出按钮改为蓝字浅底",
+      changes: ["导出分析结果取消蓝色实心背景，采用与相邻按钮一致的背景、边框、字重和留白，文字保留蓝色。"],
+    },
+    {
+      version: "v1.82", current: false, title: "工具栏按钮风格统一",
+      changes: ["统一工具栏按钮与查看 Fail 明细的高度、圆角、字号及边框，保留分段模式切换。", "收紧导出按钮的左右留白和字重，保留蓝色强调；导入与清空保持各自颜色提示。"],
+    },
+    {
+      version: "v1.81", current: false, title: "多分辨率验收与总览图表文字修复",
+      changes: ["补足良率趋势图左侧刻度空间，避免百分比前位被裁切。", "Pareto 次数刻度与累计标注分行显示，避免右下角文字重叠。"],
+    },
+    {
+      version: "v1.80", current: false, title: "总览文字对齐与首要 Fail 备注",
+      changes: ["总览卡片标题、主值和说明共用行高，统一主值字号并对齐文字。", "LX1630H 的首要 Fail 为 IDD 时补充“大部分为空封”备注，仅作说明，不改变识别与统计。"],
+    },
+    {
+      version: "v1.79", current: false, title: "底部空间用于图表",
+      changes: ["减少面板底部预留，并按实际面板间距计算绘图区高度，将底部多余空间让给图表，保留坐标轴和滚动稳定。"],
+    },
+    {
+      version: "v1.78", current: false, title: "移除图表最大化按钮",
+      changes: ["移除趋势图和直方图的最大化按钮，保留图表切换、显示全部范围与规格拖线。"],
+    },
+    {
+      version: "v1.77", current: false, title: "紧凑图表工具栏与首屏适配",
+      changes: ["压缩图表工具栏上下留白和按钮间距，为绘图区腾出空间。", "图表优先适配首屏剩余高度，取消 400px 与半屏高度的强制下限，保留滚动时尺寸稳定和窄屏独立滚动。"],
+    },
+    {
+      version: "v1.76", current: false, title: "滚动稳定与更大绘图区",
+      changes: ["页面滚动不再改变图表高度或触发尺寸重绘，避免绘图区随滚动拉伸。", "桌面绘图区至少 400px，并按窗口高度扩大；空间不足时在右侧独立滚动，保留统计、模拟与规格拖线。"],
+    },
+    {
+      version: "v1.75", current: false, title: "统计与模拟行高对齐",
+      changes: ["并排面板共用标题、大指标和小指标行高，恢复与新增 Fail 分两行显示时，两侧分隔线和底边仍保持对齐。", "保留完整数量与原字号，较长内容可同步撑高，窄屏沿用上下排列。"],
+    },
+    {
+      version: "v1.74", current: false, title: "模拟良率强调底色修复",
+      changes: ["清除模拟结果容器残留的上下内边距，让模拟总良率强调背景完整填充单元格。"],
+    },
+    {
+      version: "v1.73", current: false, title: "规格线拖动响应优化",
+      changes: ["规格线连续拖动按动画帧合并模拟更新，复用拖动期间固定的视窗外计数，只重绘当前可见图表。", "保留抓取偏移以减少起拖跳动，松开或取消拖动时刷新最终结果，支持指针捕获丢失后的清理。"],
+    },
+    {
+      version: "v1.72", current: false, title: "紧凑统计与模拟区域",
+      changes: ["按确认预览压缩顶部标题、面板内边距和指标行高，保留全部指标及规格操作，为趋势图增加显示空间。"],
+    },
+    {
+      version: "v1.71", current: false, title: "规格标签横向排列",
+      changes: ["LSL、USL 标签移到各自输入框左侧，与输入框同一行显示。"],
+    },
+    {
+      version: "v1.70", current: false, title: "统计与模拟标题精简",
+      changes: ["左侧面板标题统一为数据统计，右侧标题改为良率模拟。"],
+    },
+    {
+      version: "v1.69", current: false, title: "精简说明与趋势图标题栏",
+      changes: ["删除模拟面板底部说明及趋势图独立标题栏，收紧留白，为趋势图增加可用高度。", "趋势图最大化入口移到图表工具栏，保留原有最大化、规格拖线与图表切换功能。"],
+    },
+    {
+      version: "v1.68", current: false, title: "统计与模拟两行布局",
+      changes: ["测试统计与良率模拟均改为上排两个大格、下排四个小格，移除标准差、最小/最大和参数合格率的展示。", "均值与模拟低/高超限移到下排；恢复与新增 Fail 合并显示，分别使用绿色加号与红色减号，同时发生时分别保留数量。"],
+    },
+    {
+      version: "v1.67", current: false, title: "统计与良率模拟双面板",
+      changes: ["取消良率模拟抽屉，顶部恢复左侧完整测试统计、右侧规格与良率模拟的常驻双面板。", "保留规格输入、恢复原规格、图表拖线与全部模拟结果，窄屏上下排列；默认趋势图保持不变。"],
+    },
+    {
+      version: "v1.66", current: false, title: "默认显示趋势图",
+      changes: ["Fail 分布默认显示趋势图，清空数据后恢复趋势图；保留直方图和双图对比切换。"],
+    },
+    {
+      version: "v1.65", current: false, title: "全部测试项展开列表",
+      changes: ["顶部排序控件改为全部测试项入口，展开后按文件测试顺序显示全部参数，蓝底条和数字展示归因 Fail 数量，无 Fail 项显示 0。", "保留原 Fail 列表及搜索，移除底部重复选择器；支持点击选择、点击外部或 Esc 收起。"],
+    },
+    {
+      version: "v1.64", current: false, title: "全部参数列表显示修复",
+      changes: ["修复 Fail 分布左下角全部参数列表被侧栏裁切的问题。", "列表在侧栏内展开并独立滚动，长参数名自动换行，保留选择与 Fail 数量显示。"],
+    },
+    {
+      version: "v1.63", current: false, title: "良率模拟抽屉第四阶段",
+      changes: ["良率模拟改为右侧抽屉，主分析区保留 KPI 与双图，抽屉支持独立滚动、关闭和 Esc 返回。", "集中展示原始规格、当前测试项归因及全部模拟结果；沿用原规格输入、恢复原规格、图表拖线及计算状态。", "关闭并重新打开保留模拟规格，原始统计不变；多规格限制与错误提示继续有效。"],
+    },
+    {
+      version: "v1.62", current: false, title: "双图分析与响应式第三阶段",
+      changes: ["默认双图对比，支持趋势图、直方图切换；主分析区不足 1000px 时自动显示单图，保留布局选择。", "两张图支持最大化及 Esc 还原，复用原 Canvas、连线、范围切换和规格拖动。", "按容器尺寸重绘并适配图表高度；保留 KPI、侧栏、模拟面板及原图表数据处理，尚未实施模拟抽屉。"],
+    },
+    {
+      version: "v1.61", current: false, title: "KPI 横排统计第二阶段",
+      changes: ["测试统计改为五项 KPI 横排：有效样本、单项超限率、均值、标准差、超限数量。", "最小值、最大值、原始 LSL/USL 及归因计数移入详细统计，沿用原有格式、精度和单位。", "窄内容区指标自动换行；本阶段未修改统计算法、图表数据处理、双图布局或新增模拟抽屉。"],
+    },
+    {
+      version: "v1.60", current: false, title: "紧凑工作台第一阶段",
+      changes: ["导入后的顶部工具栏采用 Grid/Flex 排列，压缩至约 52px；导航独立排列并保持窄屏可访问。", "新增已导入文件数量；测试项侧栏默认 252px，支持折叠/展开、搜索及 Fail 数量/占比排序。", "侧栏折叠保留当前测试项并重绘图表；本阶段保留现有统计、图表和模拟面板，未实施 KPI、双图切换或模拟抽屉。"],
+    },
+    {
+      version: "v1.59", current: false, title: "顺序图数据点连线",
+      changes: ["实测值随测试顺序变化图恢复浅蓝连线，便于识别趋势、跳变和异常点。", "保留红蓝数据点、规格拖线、全部范围、视窗外异常计数及当前页面布局；连线沿用原采样，视窗外数值处断开。"],
+    },
+    {
+      version: "v1.58", current: false, title: "小导入区与统一导航",
+      changes: ["导入后顶部显示小型导入区，支持点击选择文件及拖入文件、文件夹、压缩包。", "清空数据恢复为右上角常驻按钮，与继续添加、导出分析结果放在一起。", "所有分析页签共用紧凑导航，切换保留当前数据与分析结果。", "补齐近期分布布局与导航更新记录，后续功能、布局与交互更新同步维护页面日志。"],
+    },
+    {
+      version: "v1.57", current: false, title: "分布分析阅读布局优化",
+      changes: ["按确认预览加高顺序分布图，收紧上方统计与模拟区域，保留全部指标和规格操作。", "调整左侧列表比例、选中样式及数值对齐，保留独立滚动、直方图和窄屏布局。", "按确认参考图实现两行顶部导航、可搜索三列表格、主统计与双指标模拟卡片；额外指标保留在可展开明细中。", "顺序图采用散点显示，保留异常提示、规格拖线、全部范围和直方图；全部分析页签使用相同顶部导航，支持继续添加与工作区拖入文件。"],
+    },
+    {
+      version: "v1.56", current: false, title: "界面统一与项目交接",
       changes: ["简易 / 专业模式改为分段按钮，保留平滑切换及现有分析结果。", "Fail 分布左右区域独立滚动，按浏览器可用高度适配，并统一使用细圆角滚动条。", "精简导入错误提示，移除模式说明和批次面板展示；批次计算与导出保留。", "保留完整测试统计、良率模拟、顺序图与直方图；增加项目交接及业务规则文档。"],
     },
     {
@@ -387,10 +511,16 @@
     distributionFocus: true,
     distributionRenderFrame: 0,
     limitDrag: null,
+    limitSimulationPending: false,
     limitRenderFrame: 0,
     detailSearch: "",
     detailPage: 1,
     pageSize: 100,
+    chartMode: "trend",
+    chartSingle: "trend",
+    maximizedChart: null,
+    chartLayoutFrame: 0,
+    sidebarCollapsed: false,
     distributionPickerOpen: false,
     showAllDistributionTests: false,
   };
@@ -399,12 +529,15 @@
   const ids = [
     "batchYieldPanel", "batchYieldContent",
     "simpleImpactPanel", "simpleImpactContent", "expandAnalysisButton",
-    "dropZone", "fileInput", "browseButton", "message", "workspace", "fileFilter", "analysisMode",
+    "distributionCharts", "distributionPlots", "chartLayoutToolbar", "chartLayoutHint", "chartMaxDialog", "sequenceChartPanel", "histogramChartPanel",
+    "importFileCount", "distributionLayout", "distributionSidebar", "sidebarToggle",
+    "compactImportZone", "dropZone", "fileInput", "browseButton", "message", "workspace", "fileFilter", "analysisMode",
     "exportButton", "addFilesButton", "clearButton", "summaryCards", "paretoChart",
     "yieldChart", "yieldTrendHint", "failFocusContent", "testItemSelect", "selectedTestStats",
     "parameterChart", "stabilitySearch", "stabilityTableBody", "failReasonFilter",
     "detailSearch", "detailTableBody", "failDetailCount", "detailPagination", "fileTableBody",
     "fileYieldChart", "themeToggle", "distributionTestButton", "distributionTestMenu", "distributionFailTableBody",
+    "distributionSearch", "distributionTestCount", "distributionExtraStats", "simulationExtraStats",
     "distributionTitle", "distributionHint", "distributionStats", "distributionDetailButton",
     "failSequenceChart", "failHistogramChart", "limitSimulationPanel", "limitSimulationNote",
     "simulatedLowerInput", "simulatedUpperInput", "resetLimitsButton", "yieldSimulation",
@@ -429,29 +562,44 @@
   function bindEvents() {
     el.browseButton.addEventListener("click", () => el.fileInput.click());
     el.addFilesButton.addEventListener("click", () => el.fileInput.click());
+    el.compactImportZone.addEventListener("click", () => el.fileInput.click());
     el.fileInput.addEventListener("change", (event) => handleFiles(Array.from(event.target.files || [])));
 
+    for (const zone of [el.dropZone, el.compactImportZone]) {
     ["dragenter", "dragover"].forEach((eventName) => {
-      el.dropZone.addEventListener(eventName, (event) => {
+      zone.addEventListener(eventName, (event) => {
         event.preventDefault();
         event.stopPropagation();
-        el.dropZone.classList.add("is-dragging");
+        zone.classList.add("is-dragging");
       });
     });
     ["dragleave", "drop"].forEach((eventName) => {
-      el.dropZone.addEventListener(eventName, (event) => {
+      zone.addEventListener(eventName, (event) => {
         event.preventDefault();
         event.stopPropagation();
-        el.dropZone.classList.remove("is-dragging");
+        zone.classList.remove("is-dragging");
       });
     });
-    el.dropZone.addEventListener("drop", async (event) => {
+    zone.addEventListener("drop", async (event) => {
       try {
         const files = await collectDroppedFiles(event.dataTransfer);
         await handleFiles(files);
       } catch (error) {
         showMessage(`读取拖入内容失败：${error.message}`, "error");
       }
+    });
+
+    }
+
+    const importWorkspace = el.workspace;
+    for (const type of ["dragenter", "dragover"]) importWorkspace.addEventListener(type, event => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    });
+    importWorkspace.addEventListener("drop", async event => {
+      event.preventDefault();
+      try { await handleFiles(await collectDroppedFiles(event.dataTransfer)); }
+      catch (error) { showMessage(`读取拖入内容失败：${error.message}`, "error"); }
     });
 
     el.fileFilter.addEventListener("change", () => {
@@ -487,23 +635,55 @@
       renderFailDetails();
     });
     el.stabilitySearch.addEventListener("input", renderStabilityTable);
+    el.distributionSearch.addEventListener("input", renderDistributionFailList);
+    el.sidebarToggle.addEventListener("click", () => setSidebarCollapsed(!state.sidebarCollapsed));
+    el.distributionCharts.addEventListener("click", event => {
+      const mode = event.target.closest("button[data-chart-mode]");
+      if (mode && !state.maximizedChart) {
+        state.chartMode = mode.dataset.chartMode;
+        if (state.chartMode !== "both") state.chartSingle = state.chartMode;
+        scheduleDistributionChartLayout();
+      }
+      const maximize = event.target.closest("button[data-maximize-chart]");
+      if (maximize) {
+        if (state.maximizedChart) el.chartMaxDialog.close();
+        else {
+          state.maximizedChart = maximize.dataset.maximizeChart;
+          el.chartMaxDialog.appendChild(el.distributionCharts);
+          el.distributionCharts.classList.add("is-maximized");
+          el.chartMaxDialog.showModal();
+          updateDistributionChartLayout();
+          maximize.focus();
+          scheduleDistributionChartLayout();
+        }
+      }
+    });
+
+    el.chartMaxDialog.addEventListener("close", () => {
+      const previous = state.maximizedChart;
+      state.maximizedChart = null;
+      document.querySelector(".distribution-chart-column").appendChild(el.distributionCharts);
+      el.distributionCharts.classList.remove("is-maximized");
+      updateDistributionChartLayout();
+      if (state.activeTab === "distribution" && !el.workspace.hidden) el.distributionCharts.querySelector('[data-maximize-chart="' + previous + '"]')?.focus();
+      scheduleDistributionChartLayout();
+    });
+    const chartResizeObserver = new ResizeObserver(scheduleDistributionChartLayout);
+    for (const target of [el.distributionCharts, document.querySelector(".distribution-chart-column"), document.querySelector(".distribution-summary-panel"), el.failSequenceChart.parentElement, el.failHistogramChart.parentElement]) chartResizeObserver.observe(target);
+
     el.distributionTestButton.addEventListener("click", (event) => {
       event.stopPropagation();
       setDistributionPickerOpen(!state.distributionPickerOpen);
     });
     el.distributionTestMenu.addEventListener("click", (event) => {
-      const toggle = event.target.closest("button[data-toggle-all-tests]");
-      if (toggle) {
-        state.showAllDistributionTests = !state.showAllDistributionTests;
-        updateDistributionTestSelect();
-        return;
-      }
       const option = event.target.closest("button[data-distribution-test]");
       if (option) selectDistributionReason(option.dataset.distributionTest);
     });
     document.addEventListener("click", (event) => {
       if (!event.target.closest(".distribution-test-picker")) setDistributionPickerOpen(false);
     });
+    window.addEventListener("resize", () => setDistributionPickerOpen(false));
+    el.distributionSidebar.addEventListener("scroll", () => setDistributionPickerOpen(false));
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") setDistributionPickerOpen(false);
     });
@@ -578,6 +758,11 @@
       analyzeAndRender();
     });
 
+    const chromeObserver = new ResizeObserver(() => {
+      document.documentElement.style.setProperty("--workspace-toolbar-height", `${document.querySelector(".app-header").getBoundingClientRect().height}px`);
+      fitDistributionPanels();
+    });
+    chromeObserver.observe(document.querySelector(".app-header"));
     let resizeTimer = null;
     const scrollbarTimers = new WeakMap();
     document.addEventListener("scroll", (event) => {
@@ -598,7 +783,6 @@
         fitDistributionPanels();
       });
     };
-    window.addEventListener("scroll", scheduleDistributionLayout, { passive: true });
     window.addEventListener("resize", () => {
       scheduleDistributionLayout();
       clearTimeout(resizeTimer);
@@ -922,7 +1106,9 @@
       ? Core.aggregateSummaryReports?.(reports) || null
       : null;
     state.distributionCache.clear();
+    el.importFileCount.textContent = `已导入 ${formatInteger(state.files.length + state.summaryReports.length + state.factoryReports.length)} 个文件`;
     el.workspace.hidden = false;
+    document.body.classList.add("analysis-workspace");
     applyAnalysisMode();
     updateTabAvailability();
     renderSummary();
@@ -1016,6 +1202,9 @@
     const failStats = summaryOnly ? state.summaryAggregate.failStats : a.failStats;
     const topFail = failStats[0];
     const product = productSummary(summaryOnly, a);
+    const topFailNote = !summaryOnly && product.value.trim().toUpperCase() === "LX1630H"
+      && topFail?.reason.trim().toUpperCase() === "IDD"
+      ? '<br><span class="top-fail-note" title="用户补充备注，不参与空封识别或良率计算">大部分为空封</span>' : "";
     const timeContext = source.testTimeMs === null
       ? (summaryOnly ? "Summary 未提供模块时间" : "CSV 未提供测试时间")
       : summaryOnly
@@ -1041,9 +1230,9 @@
           : `${a.selectedFiles.length} 个测试明细文件`,
         className: "",
       },
-      { label: "Pass", value: formatInteger(source.pass), context: source.total ? `${formatPercent(source.yield)} 良率` : "—", className: "pass" },
+      { label: "Pass", value: formatInteger(source.pass), context: source.total ? `数据 ${formatPercent(source.yield)} 良率，<br>非批次真实良率` : "—", className: "pass" },
       { label: "Fail", value: formatInteger(source.fail), context: source.total ? `${formatPercent(1 - source.yield)} 失效率` : "—", className: "fail" },
-      { label: "首要 Fail 项", value: topFail ? escapeHtml(topFail.reason) : "—", context: topFail ? `${formatInteger(topFail.count)} 次 · 占 Fail ${formatPercent(topFail.failShare)}` : "未发现 Fail", className: "top-fail" },
+      { label: "首要 Fail 项", value: topFail ? escapeHtml(topFail.reason) : "—", context: topFail ? `占 Fail ${formatPercent(topFail.failShare)}${topFailNote}` : "未发现 Fail", className: "top-fail" },
       {
         label: "单颗测试时间",
         value: source.testTimeMs !== null ? `${formatDecimal(source.testTimeMs, 1)} ms` : "—",
@@ -1051,14 +1240,14 @@
         className: "test-time",
       },
       {
-        label: "UPH",
+        label: "理论 UPH",
         value: source.uph !== null ? formatInteger(Math.round(source.uph)) : "—",
         context: `含 ${formatInteger(source.indexTimeMs)} ms Index 时间${summaryOnly ? " · 理论估算" : ""}`,
         className: "uph",
         title: "UPH = 3600 ÷ (单颗测试时间 ms + 150 ms) × 1000",
       },
       {
-        label: "日产出",
+        label: "理论日产出",
         value: source.dailyOutput !== null ? formatInteger(Math.round(source.dailyOutput)) : "—",
         context: `${formatInteger(source.dailyHours)} 小时 × ${formatPercent(source.utilization)} 稼动率${summaryOnly ? " · 理论估算" : ""}`,
         className: "daily-output",
@@ -1458,15 +1647,12 @@
   function updateDistributionTestSelect(testNames = distributionTestNames()) {
     const failStatMap = new Map(state.analysis.failStats.map((item) => [item.reason, item]));
     const maxFailCount = Math.max(1, ...state.analysis.failStats.map((item) => item.count));
-    const failNames = testNames.filter((name) => (failStatMap.get(name)?.count || 0) > 0);
-    const passOnlyNames = testNames.filter((name) => !failStatMap.has(name) || !failStatMap.get(name)?.count);
-    if (passOnlyNames.includes(state.selectedDistributionReason)) state.showAllDistributionTests = true;
     const renderOptions = (names) => names.map((name) => {
       const stat = failStatMap.get(name);
       const failCount = stat?.count || 0;
-      const fillWidth = failCount ? Math.max(5, (failCount / maxFailCount) * 100) : 0;
+      const fillWidth = failCount ? (failCount / maxFailCount) * 100 : 0;
       const selectedClass = name === state.selectedDistributionReason ? " is-selected" : "";
-      const failLabel = failCount ? `<span class="distribution-test-count">${formatInteger(failCount)}</span>` : "";
+      const failLabel = `<span class="distribution-test-count">${formatInteger(failCount)}</span>`;
       return `<button class="distribution-test-option${selectedClass}" type="button" role="option"
           aria-selected="${name === state.selectedDistributionReason}" data-distribution-test="${escapeHtml(name)}"
           title="${escapeHtml(name)}${failCount ? ` · Fail ${formatInteger(failCount)} · 占当前批次 ${formatPercent(stat.totalShare)}` : ""}">
@@ -1474,25 +1660,14 @@
         <span class="distribution-test-name">${escapeHtml(name)}</span>${failLabel}
       </button>`;
     }).join("");
-    el.distributionTestMenu.innerHTML = `
-      <div class="distribution-test-group-label">有 Fail 的测试项 <span>${formatInteger(failNames.length)}</span></div>
-      ${renderOptions(failNames) || '<div class="distribution-test-empty">当前范围没有归因 Fail 项</div>'}
-      ${state.showAllDistributionTests && passOnlyNames.length ? `
-        <div class="distribution-test-group-label is-pass-only">无 Fail / 仅 Pass 测试项 <span>${formatInteger(passOnlyNames.length)}</span></div>
-        ${renderOptions(passOnlyNames)}` : ""}
-      <button class="distribution-test-toggle" type="button" data-toggle-all-tests="true" aria-expanded="${state.showAllDistributionTests}">
-        ${state.showAllDistributionTests ? "收起无 Fail 测试项" : `显示全部测试项（另有 ${formatInteger(passOnlyNames.length)} 项）`}
-      </button>`;
+    el.distributionTestMenu.innerHTML = `<div class="distribution-test-group-label"><span>测试项 · 测试顺序</span><span>Fail 数量</span></div>${renderOptions(testNames)}`;
     syncDistributionPickerSelection();
     setDistributionPickerOpen(state.distributionPickerOpen && Boolean(testNames.length));
   }
 
   function syncDistributionPickerSelection() {
-    const selected = state.analysis?.failStats.find((item) => item.reason === state.selectedDistributionReason);
-    el.distributionTestButton.disabled = !state.selectedDistributionReason && !el.distributionTestMenu.children.length;
-    el.distributionTestButton.textContent = state.selectedDistributionReason
-      ? `${state.selectedDistributionReason}${selected ? ` · Fail ${formatInteger(selected.count)}` : ""}`
-      : "选择测试项";
+    el.distributionTestButton.disabled = !el.distributionTestMenu.querySelector('[data-distribution-test]');
+    el.distributionTestButton.textContent = "全部测试项";
     el.distributionTestButton.title = el.distributionTestButton.textContent;
     el.distributionTestMenu.querySelectorAll("button[data-distribution-test]").forEach((option) => {
       const selectedOption = option.dataset.distributionTest === state.selectedDistributionReason;
@@ -1505,24 +1680,82 @@
     state.distributionPickerOpen = Boolean(open) && !el.distributionTestButton.disabled;
     el.distributionTestMenu.hidden = !state.distributionPickerOpen;
     el.distributionTestButton.setAttribute("aria-expanded", String(state.distributionPickerOpen));
+    if (state.distributionPickerOpen) {
+      const anchor = el.distributionTestButton.getBoundingClientRect();
+      const width = Math.min(320, innerWidth - 24);
+      const top = Math.min(anchor.bottom + 6, innerHeight - 120);
+      Object.assign(el.distributionTestMenu.style, {
+        left: Math.max(12, Math.min(anchor.left, innerWidth - width - 12)) + "px",
+        top: Math.max(12, top) + "px", width: width + "px",
+        maxHeight: Math.max(80, innerHeight - top - 12) + "px",
+      });
+    }
+  }
+
+  function updateDistributionChartLayout() {
+    const dualFits = el.distributionCharts.clientWidth >= 1000;
+    const mode = state.maximizedChart || (state.chartMode === "both" && !dualFits ? state.chartSingle : state.chartMode);
+    el.distributionCharts.dataset.chartMode = mode;
+    el.sequenceChartPanel.hidden = mode === "histogram";
+    el.histogramChartPanel.hidden = mode === "trend";
+    el.distributionCharts.querySelectorAll("button[data-chart-mode]").forEach(button => {
+      button.setAttribute("aria-pressed", String(button.dataset.chartMode === (state.maximizedChart || state.chartMode)));
+      button.disabled = Boolean(state.maximizedChart);
+    });
+    el.distributionCharts.querySelectorAll("button[data-maximize-chart]").forEach(button => {
+      button.textContent = state.maximizedChart ? "还原" : "最大化";
+      button.setAttribute("aria-pressed", String(Boolean(state.maximizedChart)));
+      button.setAttribute("aria-label", (state.maximizedChart ? "还原" : "最大化") + (button.dataset.maximizeChart === "trend" ? "趋势图" : "直方图"));
+    });
+    el.chartLayoutHint.textContent = state.maximizedChart ? "按 Esc 或还原按钮返回" : state.chartMode === "both" && !dualFits ? "区域较窄，暂显示单图；可切换趋势图或直方图。" : "";
+    if (!state.maximizedChart) {
+      let height = 330;
+      if (innerWidth > 760) {
+        const pane = document.querySelector(".distribution-chart-column");
+        const summaryHeight = document.querySelector(".distribution-summary-panel").getBoundingClientRect().height;
+        const headerHeight = Math.max(...[el.sequenceChartPanel, el.histogramChartPanel].filter(panel => !panel.hidden).map(panel => (panel.querySelector(":scope > .panel-header")?.getBoundingClientRect().height || 0)));
+        const spacing = parseFloat(getComputedStyle(pane).rowGap) + parseFloat(getComputedStyle(el.distributionCharts).rowGap) + 2;
+        height = Math.max(260, Math.min(720, Math.floor(pane.clientHeight - summaryHeight - el.chartLayoutToolbar.getBoundingClientRect().height - headerHeight - spacing)));
+      }
+      el.distributionCharts.style.setProperty("--distribution-chart-height", height + "px");
+    }
+  }
+
+  function scheduleDistributionChartLayout() {
+    if (state.chartLayoutFrame) return;
+    state.chartLayoutFrame = requestAnimationFrame(() => {
+      state.chartLayoutFrame = 0;
+      if (state.activeTab !== "distribution" || el.workspace.hidden || state.analysisMode === "simple") return;
+      updateDistributionChartLayout();
+      drawDistributionCharts();
+    });
+  }
+
+  function setSidebarCollapsed(collapsed) {
+    setDistributionPickerOpen(false);
+    state.sidebarCollapsed = collapsed;
+    el.distributionLayout.classList.toggle("is-sidebar-collapsed", collapsed);
+    el.sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+    const label = collapsed ? "展开测试项侧栏" : "收起测试项侧栏";
+    el.sidebarToggle.setAttribute("aria-label", label);
+    el.sidebarToggle.title = label;
+    el.sidebarToggle.textContent = collapsed ? "›" : "‹";
+    requestAnimationFrame(() => { fitDistributionPanels(); scheduleDistributionChartLayout(); });
   }
 
   function renderDistributionFailList() {
     if (!state.analysis) return;
-    const rows = state.analysis.failStats;
-    if (!rows.length) {
-      el.distributionFailTableBody.innerHTML = `<tr><td colspan="4" class="empty-state">当前范围没有 Fail 测试项</td></tr>`;
-      return;
-    }
-    el.distributionFailTableBody.innerHTML = rows.map((item) => `
-      <tr class="clickable-row${item.reason === state.selectedDistributionReason ? " is-selected" : ""}"
-          data-reason="${escapeHtml(item.reason)}"
-          aria-selected="${item.reason === state.selectedDistributionReason}">
-        <td><strong class="distribution-reason" title="${escapeHtml(item.reason)}">${escapeHtml(item.reason)}</strong></td>
-        <td>${failTotalStat(item.count, item.totalShare)}</td>
-        <td>${failDirectionStat(item.low, item.count)}</td>
-        <td>${failDirectionStat(item.high, item.count)}</td>
-      </tr>`).join("");
+    const allRows = state.analysis.failStats;
+    const query = el.distributionSearch.value.trim().toLowerCase();
+    const rows = allRows.filter(item => item.reason.toLowerCase().includes(query));
+    rows.sort((a, b) => b.count - a.count);
+    el.distributionTestCount.textContent = query ? `${formatInteger(rows.length)} / ${formatInteger(allRows.length)} 项` : `${formatInteger(allRows.length)} 项`;
+    el.distributionFailTableBody.innerHTML = rows.length ? rows.map(item => `
+      <tr class="clickable-row${item.reason === state.selectedDistributionReason ? " is-selected" : ""}" data-reason="${escapeHtml(item.reason)}" aria-selected="${item.reason === state.selectedDistributionReason}">
+        <td><span class="distribution-reason" title="${escapeHtml(item.reason)}">${escapeHtml(item.reason)}</span></td>
+        <td title="偏低 ${formatInteger(item.low)}（${formatPercent(item.count ? item.low / item.count : 0)}） / 偏高 ${formatInteger(item.high)}（${formatPercent(item.count ? item.high / item.count : 0)}）">${formatInteger(item.count)}</td>
+        <td>${formatPercent(item.totalShare)}</td>
+      </tr>`).join("") : '<tr><td colspan="3" class="empty-state">没有匹配的 Fail 测试项</td></tr>';
   }
 
   function renderSelectedDistribution() {
@@ -1532,6 +1765,8 @@
       el.distributionTitle.textContent = "Fail 数据分布";
       el.distributionHint.textContent = "当前范围没有 Fail 项";
       el.distributionStats.innerHTML = "";
+      el.distributionExtraStats.innerHTML = "";
+      el.simulationExtraStats.innerHTML = "";
       el.distributionDetailButton.disabled = true;
       updateRangeModeButton(null);
       setLimitControlsDisabled(true);
@@ -1549,7 +1784,7 @@
     const result = distributionResultFor(reason);
     state.distributionResult = result;
     updateRangeModeButton(result);
-    el.distributionTitle.textContent = `${reason} · ${result.attributedFail ? "超限分布" : "数据分布"}`;
+    el.distributionTitle.textContent = reason;
     el.distributionDetailButton.disabled = result.attributedFail === 0;
     if (result.specVariant) {
       el.distributionHint.innerHTML = `检测到 <strong>${formatInteger(result.specs.length)}</strong> 种规格，超限按每个文件自己的上下限判定`;
@@ -1559,18 +1794,14 @@
       el.distributionHint.textContent = "该测试项没有可用的规格上下限";
     }
 
-    const metrics = [
-      ["归因 Fail", formatInteger(result.attributedFail)],
-      ["有效数值", formatInteger(result.total)],
-      ["原规格低于下限", `<span class="${result.low ? "danger-text" : ""}">${formatInteger(result.low)}</span>`],
-      ["原规格高于上限", `<span class="${result.high ? "danger-text" : ""}">${formatInteger(result.high)}</span>`],
+    const primary = [["归因 Fail", formatInteger(result.attributedFail)], ["有效数值", formatInteger(result.total)]];
+    const details = [
+      ["原规格低于下限", formatInteger(result.low)], ["原规格高于上限", formatInteger(result.high)],
       ["原规格超限率", result.total ? formatPercent(result.outOfSpec / result.total) : "—"],
       ["均值", formatMeasurement(result.mean, result.unit)],
-      ["标准差", formatMeasurement(result.std, result.unit)],
-      ["最小 / 最大", `${formatNumber(result.min)} / ${formatNumber(result.max)}${result.unit ? ` ${escapeHtml(result.unit)}` : ""}`],
     ];
-    el.distributionStats.innerHTML = metrics.map(([label, value], index) => `
-      <div class="mini-metric ${index < 2 ? "metric-primary" : "metric-secondary"}"><span class="label">${label}</span><span class="value">${value}</span></div>`).join("");
+    el.distributionStats.innerHTML = primary.map(([label,value]) => `<div class="mini-metric"><span class="label">${label}</span><span class="value">${value}</span></div>`).join("");
+    el.distributionExtraStats.innerHTML = details.map(([label,value],index) => `<div class="${index < 2 ? "has-outliers" : ""}"><span>${label}</span><strong>${value}</strong></div>`).join("");
     renderLimitSimulator(result);
     if (state.activeTab === "distribution") requestAnimationFrame(drawDistributionCharts);
   }
@@ -1626,6 +1857,8 @@
   }
 
   function renderLimitSimulator(result) {
+
+    el.simulationExtraStats.innerHTML = "";
     if (result.specVariant) {
       setLimitControlsDisabled(true);
       el.simulatedLowerInput.value = "";
@@ -1677,33 +1910,37 @@
     el.simulatedLowerInput.classList.toggle("is-invalid", !valid);
     el.simulatedUpperInput.classList.toggle("is-invalid", !valid);
     if (!valid) {
+      el.simulationExtraStats.innerHTML = "";
       el.yieldSimulation.innerHTML = `<div class="simulation-warning">LSL 不能高于 USL，请调整后再计算。</div>`;
       return;
     }
     const simulation = Core.simulateLimitYield(state.analysis, result, limits.lower, limits.upper);
     const deltaClass = simulation.delta > 1e-12 ? "positive" : simulation.delta < -1e-12 ? "negative" : "";
-    const changeText = formatPercentagePointDelta(simulation.delta);
+    const changeText = formatPercentagePointDelta(simulation.delta).replace(/%$/, " pp");
     const metrics = [
       ["当前总良率", formatYieldPrecise(state.analysis.yield), ""],
       ["模拟总良率", formatYieldPrecise(simulation.yield), `highlight ${deltaClass}`],
       ["良率变化", changeText, deltaClass],
       ["预计 Pass", formatInteger(simulation.projectedPass), deltaClass],
-      ["预计恢复", `${formatInteger(simulation.recovered)} 条`, simulation.recovered ? "positive" : ""],
-      ["新增 Fail", `${formatInteger(simulation.newFails)} 条`, simulation.newFails ? "negative" : ""],
+      ["恢复 / 新增 Fail", [
+        simulation.recovered ? `<span class="recovered-count">+${formatInteger(simulation.recovered)} 条</span>` : "",
+        simulation.newFails ? `<span class="new-fail-count">−${formatInteger(simulation.newFails)} 条</span>` : "",
+      ].filter(Boolean).join("<br>") || "0 条", "quantity-change"],
       ["模拟低 / 高超限", `${formatInteger(simulation.low)} / ${formatInteger(simulation.high)}`, ""],
-      ["该参数合格率", formatYieldPrecise(simulation.parameterYield), ""],
     ];
-    el.yieldSimulation.innerHTML = metrics.map(([label, value, className], index) => `
-      <div class="simulation-metric ${index < 2 ? "metric-primary" : "metric-secondary"} ${className}">
-        <span class="label">${label}</span>
-        <span class="value">${value}</span>
-      </div>`).join("") + `<p class="simulation-assumption">单项模拟：仅重新判定当前测试项，其他 Fail 原因保持不变。</p>`;
+    const renderMetric = ([label, value, className]) => `<div class="simulation-metric ${className}"><span class="label">${label}</span><span class="value">${value}</span></div>`;
+    el.yieldSimulation.innerHTML = metrics.slice(0, 2).map(renderMetric).join("");
+    el.simulationExtraStats.innerHTML = metrics.slice(2).map(renderMetric).join("");
   }
 
   function scheduleLimitChartRender() {
     if (state.limitRenderFrame) return;
     state.limitRenderFrame = requestAnimationFrame(() => {
       state.limitRenderFrame = 0;
+      if (state.limitSimulationPending && state.distributionResult) {
+        state.limitSimulationPending = false;
+        renderYieldSimulation(state.distributionResult, getDistributionLimits());
+      }
       if (state.activeTab === "distribution") drawDistributionCharts();
     });
   }
@@ -2111,6 +2348,9 @@
   }
 
   function clearAll() {
+    if (el.chartMaxDialog.open) el.chartMaxDialog.close();
+    state.chartMode = "trend";
+    state.chartSingle = "trend";
     state.files = [];
     state.summaryReports = [];
     state.factoryReports = [];
@@ -2138,16 +2378,21 @@
     state.detailPage = 1;
     el.fileInput.value = "";
     el.detailSearch.value = "";
+    el.distributionSearch.value = "";
+    setSidebarCollapsed(false);
     el.distributionTestMenu.innerHTML = "";
-    el.distributionTestButton.textContent = "选择测试项";
+    el.distributionTestButton.textContent = "全部测试项";
     el.distributionTestButton.disabled = true;
     setDistributionPickerOpen(false);
     el.workspace.hidden = true;
+    document.body.classList.remove("distribution-view", "analysis-workspace");
     showMessage("已清空当前分析。可继续拖入新的 CSV、XLSX 或压缩包。", "success");
   }
 
   function switchTab(tabName) {
+    if (tabName !== "distribution" && el.chartMaxDialog.open) el.chartMaxDialog.close();
     state.activeTab = tabName;
+    document.body.classList.toggle("distribution-view", tabName === "distribution" && !el.workspace.hidden);
     document.querySelectorAll(".tab").forEach((button) => {
       const active = button.dataset.tab === tabName;
       button.classList.toggle("is-active", active);
@@ -2161,6 +2406,7 @@
       renderDistributionFailList();
       renderSelectedDistribution();
       fitDistributionPanels();
+      scheduleDistributionChartLayout();
     } else if (tabName === "stability") {
       updateTestSelect();
       renderStabilityTable();
@@ -2173,13 +2419,16 @@
     if (state.activeTab !== "distribution") return;
     const layout = document.querySelector(".distribution-layout");
     if (!layout || layout.closest(".tab-panel").hidden) return;
-    if (window.innerWidth <= 980) {
+    if (window.innerWidth <= 760) {
       layout.style.removeProperty("--distribution-pane-height");
       return;
     }
-    const top = Math.max(0, layout.getBoundingClientRect().top);
-    const height = Math.max(180, Math.floor(window.innerHeight - top - 16));
-    layout.style.setProperty("--distribution-pane-height", `${height}px`);
+    // Document position stays stable while the page scrolls.
+    const top = Math.max(0, layout.getBoundingClientRect().top + window.scrollY);
+    const height = Math.max(180, Math.floor(window.innerHeight - top - 4));
+    if (layout.style.getPropertyValue("--distribution-pane-height") !== `${height}px`) {
+      layout.style.setProperty("--distribution-pane-height", `${height}px`);
+    }
   }
 
   function openFailDistribution(reason) {
@@ -2318,19 +2567,6 @@
       item.name, statusText(item.status), item.n, rawNumber(item.mean), rawNumber(item.std), rawNumber(item.ppk),
       rawNumber(item.utilization), rawNumber(item.centerOffset), rawNumber(item.lower), rawNumber(item.upper), item.unit,
     ]));
-    rows.push([]);
-    rows.push(["Fail 明细"]);
-    rows.push(["文件", "阶段", "类型", "文件名时间", "Serial", "Site", "HBIN", "SBIN", "Fail 测试项", "实测值", "下限", "上限", "单位", "判定", "测试日期时间", "单颗测试时间(ms)", "空封", "空封特征 OS 项数"]);
-    a.failRecords.forEach((record) => {
-      const file = fileMap.get(record.fileId);
-      rows.push([
-        file?.name || "", file?.stage || "", file?.testType || "", file?.fileTimeLabel || "",
-        record.serial, record.site, record.hbin, record.sbin,
-        record.failReason, rawNumber(record.failValue), rawNumber(record.failLower), rawNumber(record.failUpper),
-        record.failUnit, directionText(record.failDirection), record.date, rawNumber(record.testTimeMs),
-        record.isEmptySeal ? "是" : "否", record.emptySealOsCount,
-      ]);
-    });
     const content = "\uFEFF" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
     downloadText(content, `FT分析结果_${timestampForFile()}.csv`, "text/csv;charset=utf-8");
     showMessage("分析结果已导出。", "success");
@@ -2406,7 +2642,7 @@
         const coordinate = orientation === "y"
           ? margin.top + plotH - ((item.value - range.min) / span) * plotH
           : margin.left + ((item.value - range.min) / span) * plotW;
-        return { ...item, distance: Math.abs(pointerCoordinate - coordinate) };
+        return { ...item, coordinate, distance: Math.abs(pointerCoordinate - coordinate) };
       }).sort((a, b) => a.distance - b.distance);
       if (!candidates.length || candidates[0].distance > 16) return;
       event.preventDefault();
@@ -2416,6 +2652,8 @@
         kind: candidates[0].kind,
         pointerId: event.pointerId,
         range,
+        offset: pointerCoordinate - candidates[0].coordinate,
+        overflow: rangeOverflow(result.points, range),
         margin,
         plotW,
         plotH,
@@ -2432,31 +2670,38 @@
       const span = Math.max(drag.range.max - drag.range.min, Number.EPSILON);
       let ratio;
       if (drag.orientation === "y") {
-        const y = Math.max(drag.margin.top, Math.min(drag.margin.top + drag.plotH, event.clientY - drag.rect.top));
+        const y = Math.max(drag.margin.top, Math.min(drag.margin.top + drag.plotH, event.clientY - drag.rect.top - drag.offset));
         ratio = 1 - (y - drag.margin.top) / drag.plotH;
       } else {
-        const x = Math.max(drag.margin.left, Math.min(drag.margin.left + drag.plotW, event.clientX - drag.rect.left));
+        const x = Math.max(drag.margin.left, Math.min(drag.margin.left + drag.plotW, event.clientX - drag.rect.left - drag.offset));
         ratio = (x - drag.margin.left) / drag.plotW;
       }
       let value = drag.range.min + ratio * span;
       if (drag.kind === "lower" && current.upper !== null) value = Math.min(value, current.upper);
       if (drag.kind === "upper" && current.lower !== null) value = Math.max(value, current.lower);
+      if (value === current[drag.kind]) return;
       const next = { ...current, [drag.kind]: value };
       state.distributionLimits.set(state.selectedDistributionReason, next);
       el.simulatedLowerInput.value = inputNumber(next.lower);
       el.simulatedUpperInput.value = inputNumber(next.upper);
-      renderYieldSimulation(state.distributionResult, next);
+      state.limitSimulationPending = true;
       scheduleLimitChartRender();
     });
 
     const endDrag = (event) => {
       if (!state.limitDrag || state.limitDrag.canvas !== canvas) return;
-      canvas.releasePointerCapture?.(event.pointerId);
+      if (state.limitDrag.pointerId !== event.pointerId) return;
       state.limitDrag = null;
+      if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      if (state.limitSimulationPending && state.distributionResult) {
+        state.limitSimulationPending = false;
+        renderYieldSimulation(state.distributionResult, getDistributionLimits());
+      }
       scheduleLimitChartRender();
     };
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("lostpointercapture", endDrag);
   }
 
   function drawDistributionCharts() {
@@ -2468,8 +2713,8 @@
     }
     const requestedLimits = result.specVariant ? { lower: null, upper: null } : getDistributionLimits(result);
     const limits = limitsAreValid(requestedLimits) ? requestedLimits : { lower: result.lower, upper: result.upper };
-    drawFailSequenceChart(result, limits);
-    drawFailHistogramChart(result, limits);
+    if (!el.sequenceChartPanel.hidden) drawFailSequenceChart(result, limits);
+    if (!el.histogramChartPanel.hidden) drawFailHistogramChart(result, limits);
   }
 
   function distributionRange(result, limits = { lower: result.lower, upper: result.upper }) {
@@ -2541,52 +2786,29 @@
     const xFor = (point) => margin.left + ((point.index - 1) / maxIndex) * plotW;
     const yFor = (value) => margin.top + plotH - ((value - range.min) / Math.max(range.max - range.min, Number.EPSILON)) * plotH;
     const clippedYFor = (value) => Math.max(margin.top + 2, Math.min(margin.top + plotH - 2, yFor(value)));
-    const overflow = rangeOverflow(result.points, range);
-
-    if (!result.specVariant) {
-      if (limits.upper !== null) {
-        const y = Math.max(margin.top, Math.min(margin.top + plotH, yFor(limits.upper)));
-        ctx.fillStyle = colorWithAlpha(theme.danger, 0.07);
-        ctx.fillRect(margin.left, margin.top, plotW, Math.max(y - margin.top, 0));
-      }
-      if (limits.lower !== null) {
-        const y = Math.max(margin.top, Math.min(margin.top + plotH, yFor(limits.lower)));
-        ctx.fillStyle = colorWithAlpha(theme.danger, 0.07);
-        ctx.fillRect(margin.left, y, plotW, Math.max(margin.top + plotH - y, 0));
-      }
-    }
-
-    if (result.mean !== null && result.mean >= range.min && result.mean <= range.max) {
-      const meanY = yFor(result.mean);
-      ctx.strokeStyle = theme.success;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 4]);
-      ctx.beginPath(); ctx.moveTo(margin.left, meanY); ctx.lineTo(margin.left + plotW, meanY); ctx.stroke();
-      ctx.setLineDash([]);
-      drawChartPill(ctx, `均值 ${formatNumber(result.mean)}`, margin.left + 8, meanY - 6, theme, "left", theme.success);
-    }
+    const overflow = state.limitDrag?.overflow || rangeOverflow(result.points, range);
 
     const points = downsample(result.points, 1100);
     ctx.save();
     ctx.beginPath();
     ctx.rect(margin.left, margin.top, plotW, plotH);
     ctx.clip();
+    // Join the sampled measurements in test order, breaking at values outside the viewport.
     ctx.beginPath();
     let segmentOpen = false;
-    points.forEach((point) => {
+    points.forEach(point => {
       if (point.value < range.min || point.value > range.max) {
         segmentOpen = false;
         return;
       }
-      const xy = [xFor(point), yFor(point.value)];
-      if (segmentOpen) ctx.lineTo(...xy);
-      else ctx.moveTo(...xy);
+      if (segmentOpen) ctx.lineTo(xFor(point), yFor(point.value));
+      else ctx.moveTo(xFor(point), yFor(point.value));
       segmentOpen = true;
     });
     ctx.strokeStyle = colorWithAlpha(theme.accent, 0.42);
     ctx.lineWidth = 1;
     ctx.stroke();
-
+    ctx.beginPath();
     ctx.fillStyle = theme.accent;
     points.filter((point) => simulatedDirection(point, limits, result.specVariant) === "within").forEach((point) => {
       ctx.beginPath(); ctx.arc(xFor(point), clippedYFor(point.value), 1.25, 0, Math.PI * 2); ctx.fill();
@@ -2613,22 +2835,29 @@
     }
 
     ctx.fillStyle = theme.muted;
-    ctx.textAlign = "left";
-    ctx.fillText("测试记录 1", margin.left, height - 8);
-    ctx.textAlign = "right";
-    ctx.fillText(`测试记录 ${formatInteger(state.analysis.records.length)}`, margin.left + plotW, height - 8);
+    const ticks = width < 500 ? 4 : 5;
+    for (let i = 0; i <= ticks; i += 1) {
+      const x = margin.left + plotW * i / ticks;
+      ctx.strokeStyle = theme.border;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
+      ctx.textAlign = i === 0 ? "left" : i === ticks ? "right" : "center";
+      ctx.fillText(formatInteger(1 + Math.round(maxIndex * i / ticks)), x, height - 20);
+    }
+    ctx.textAlign = "center";
+    ctx.fillText("测试顺序", margin.left + plotW / 2, height - 3);
   }
 
   function drawHorizontalSpecLines(ctx, limits, margin, plotW, yFor, theme) {
     [[limits.lower, "LSL"], [limits.upper, "USL"]].forEach(([value, label]) => {
       if (value === null) return;
       const y = yFor(value);
-      ctx.strokeStyle = theme.danger;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = theme.muted;
+      ctx.lineWidth = 1;
       ctx.setLineDash([7, 5]);
       ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(margin.left + plotW, y); ctx.stroke();
       ctx.setLineDash([]);
-      drawChartPill(ctx, `${label} ${formatNumber(value)}`, margin.left + plotW - 4, y - 7, theme, "right");
+      drawChartPill(ctx, `${label} ${formatNumber(value)}`, margin.left + plotW - 4, y - 7, theme, "right", theme.muted);
     });
   }
 
@@ -2723,12 +2952,12 @@
       [[limits.lower, "LSL"], [limits.upper, "USL"]].forEach(([value, label]) => {
         if (value === null) return;
         const x = margin.left + ((value - range.min) / span) * plotW;
-        ctx.strokeStyle = theme.danger;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = theme.muted;
+        ctx.lineWidth = 1;
         ctx.setLineDash([7, 5]);
         ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
         ctx.setLineDash([]);
-        drawChartPill(ctx, `${label} ${formatNumber(value)}`, x, margin.top - 7, theme, "center");
+        drawChartPill(ctx, `${label} ${formatNumber(value)}`, x, margin.top - 7, theme, "center", theme.muted);
       });
     }
 
@@ -2764,7 +2993,7 @@
     const setup = prepareCanvas(el.paretoChart);
     if (!setup) return;
     const { ctx, width, height, theme } = setup;
-    const margin = { top: 12, right: 50, bottom: 30, left: Math.min(164, Math.max(112, width * 0.3)) };
+    const margin = { top: 12, right: 50, bottom: 46, left: Math.min(164, Math.max(112, width * 0.3)) };
     const plotW = width - margin.left - margin.right;
     const plotH = height - margin.top - margin.bottom;
     const rowH = plotH / items.length;
@@ -2781,7 +3010,7 @@
       ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, margin.top + plotH); ctx.stroke();
       ctx.fillStyle = theme.muted;
       ctx.textAlign = "center";
-      ctx.fillText(formatCompact((max * tick) / 4), x, height - 8);
+      ctx.fillText(formatCompact((max * tick) / 4), x, height - 24);
     }
 
     items.forEach((item, index) => {
@@ -2831,7 +3060,7 @@
     const setup = prepareCanvas(el.yieldChart);
     if (!setup) return;
     const { ctx, width, height, theme } = setup;
-    const margin = { top: 18, right: 18, bottom: 34, left: 48 };
+    const margin = { top: 18, right: 18, bottom: 34, left: 80 };
     const plotW = width - margin.left - margin.right;
     const plotH = height - margin.top - margin.bottom;
     const values = blocks.map((block) => block.yield * 100);

@@ -5,18 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>FT 数据分析工作台</title>
-  <link rel="stylesheet" href="styles.css?v=1.56.0">
-  <script src="ft-core.js?v=1.56.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.87.0">
+  <script src="ft-core.js?v=1.57.0" defer></script>
   <script src="sevenzip-loader.js?v=1.21.0" defer></script>
-  <script src="app.js?v=1.56.0" defer></script>
+  <script src="app.js?v=1.87.0" defer></script>
 </head>
 <body>
   <header class="app-header">
-    <div>
+    <div class="app-title-group">
       <p class="eyebrow">FINAL TEST ANALYTICS</p>
       <h1>FT 数据分析工作台</h1>
-      <p class="subtitle">现已支持联动 QT8100 / QT8600、翌立科 ETS8000E、铭剑 E6400 测试平台数据，快速定位 Fail 项并评估 Pass 数据稳定性。数据只在本机浏览器中处理。</p>
+      <span class="distribution-offline-label">本机离线分析</span><p class="subtitle">现已支持联动 QT8100 / QT8600、翌立科 ETS8000E、铭剑 E6400 测试平台数据，快速定位 Fail 项并评估 Pass 数据稳定性。数据只在本机浏览器中处理。</p>
     </div>
+    <button id="compactImportZone" class="compact-import-zone" type="button" aria-label="选择文件，或拖入文件、文件夹及压缩包">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 18H5a4 4 0 0 1-.5-8A7 7 0 0 1 18 8a5 5 0 0 1 1 10h-2M12 20V9m-4 4 4-4 4 4"/></svg>
+      <span><strong>拖入文件 / 文件夹 / 压缩包</strong><small id="importFileCount">点击选择文件，或拖放继续添加</small></span>
+    </button>
+        <div class="toolbar-actions">
+          <button id="exportButton" class="secondary-button" type="button">导出分析结果</button>
+          <button id="addFilesButton" class="secondary-button" type="button">继续添加</button>
+          <button id="clearButton" class="secondary-button danger" type="button">清空数据</button>
+        </div>
     <button id="themeToggle" class="icon-button" type="button" aria-label="切换深浅色主题">◐</button>
   </header>
 
@@ -34,6 +43,7 @@
     <div id="message" class="message" role="status" aria-live="polite"></div>
 
     <section id="workspace" class="workspace" hidden>
+      <div class="workspace-navigation">
       <div class="toolbar">
         <div class="toolbar-fields">
           <label>
@@ -42,17 +52,9 @@
               <option value="all">全部测试明细汇总</option>
             </select>
           </label>
-          <div id="analysisMode" class="mode-segment" role="group" aria-label="分析模式" data-mode="simple">
-            <span class="mode-segment-thumb" aria-hidden="true"></span>
-            <button type="button" data-mode="simple" aria-pressed="true">简易模式</button>
-            <button type="button" data-mode="professional" aria-pressed="false">专业模式</button>
-          </div>
+
         </div>
-        <div class="toolbar-actions">
-          <button id="exportButton" class="secondary-button" type="button">导出分析结果</button>
-          <button id="addFilesButton" class="secondary-button" type="button">继续添加</button>
-          <button id="clearButton" class="text-button danger" type="button">清空</button>
-        </div>
+
       </div>
 
       <nav class="tabs" aria-label="分析视图">
@@ -64,6 +66,12 @@
         <button class="tab" type="button" data-tab="audit" aria-selected="false">数据审计</button>
         <button class="tab" type="button" data-tab="release" aria-selected="false">更新日志</button>
       </nav>
+          <div id="analysisMode" class="mode-segment" role="group" aria-label="分析模式" data-mode="simple">
+            <span class="mode-segment-thumb" aria-hidden="true"></span>
+            <button type="button" data-mode="simple" aria-pressed="true">简易模式</button>
+            <button type="button" data-mode="professional" aria-pressed="false">专业模式</button>
+          </div>
+      </div>
 
       <section id="overviewPanel" class="tab-panel">
         <div id="summaryCards" class="summary-grid"></div>
@@ -72,7 +80,7 @@
           <div id="batchYieldContent" class="batch-yield-content"></div>
         </article>
         <article id="simpleImpactPanel" class="panel">
-          <div class="panel-header"><div><h2>哪些 Fail 影响了良率？</h2><p>按失效次数排序；良率损失 = 该项 Fail 次数 ÷ 当前总记录数，以百分点表示。</p></div></div>
+          <div class="panel-header"><div><h2>哪些 Fail 影响了良率？</h2></div></div>
           <div id="simpleImpactContent" class="simple-impact-content"></div>
           <button id="expandAnalysisButton" class="secondary-button" type="button">展开专业分析</button>
         </article>
@@ -208,54 +216,54 @@
       </section>
 
       <section id="distributionPanel" class="tab-panel" hidden>
-        <div class="distribution-layout">
-          <article class="panel distribution-list-panel">
+        <div id="distributionLayout" class="distribution-layout">
+          <article id="distributionSidebar" class="panel distribution-list-panel">
             <div class="panel-header responsive-header">
               <div>
-                <h2>Fail 测试项</h2>
-                <p>点击项目查看实测值与超限分布</p>
+                <h2>测试项</h2>
+                <p id="distributionTestCount"></p>
               </div>
-              <label class="inline-field distribution-test-picker">
-                <span>测试项</span>
-                <div class="distribution-test-control">
-                  <button id="distributionTestButton" class="distribution-test-button" type="button" aria-haspopup="listbox" aria-expanded="false">选择测试项</button>
-                  <div id="distributionTestMenu" class="distribution-test-menu" role="listbox" hidden></div>
-                </div>
-              </label>
+              <button id="sidebarToggle" class="secondary-button sidebar-toggle" type="button" aria-expanded="true" aria-controls="distributionSidebar" aria-label="收起测试项侧栏" title="收起测试项侧栏">‹</button>
+              <input id="distributionSearch" type="search" placeholder="搜索测试项" aria-label="搜索测试项">
+              <div class="distribution-test-picker">
+                <button id="distributionTestButton" class="distribution-test-button" type="button" aria-haspopup="listbox" aria-controls="distributionTestMenu" aria-expanded="false">全部测试项</button>
+                <div id="distributionTestMenu" class="distribution-test-menu" role="listbox" aria-label="按测试顺序排列的全部测试项" hidden></div>
+              </div>
+
             </div>
             <div class="table-wrap distribution-table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Fail 测试项</th>
-                    <th title="数量及其占当前分析范围总测试数的比例">Fail / 批次</th>
-                    <th title="数量及其占当前 Fail 项的比例">偏低 / %</th>
-                    <th title="数量及其占当前 Fail 项的比例">偏高 / %</th>
+                    <th>测试项</th>
+                    <th>Fail 数</th>
+                    <th title="占当前分析范围总测试事件数的比例">占比</th>
                   </tr>
                 </thead>
                 <tbody id="distributionFailTableBody"></tbody>
               </table>
             </div>
+
           </article>
 
           <div class="distribution-chart-column">
-            <article class="panel">
+            <article class="panel distribution-summary-panel">
               <div class="panel-header responsive-header">
                 <div>
                   <h2 id="distributionTitle">Fail 数据分布</h2>
                   <p id="distributionHint">选择左侧 Fail 项开始分析</p>
                 </div>
-                <button id="distributionDetailButton" class="secondary-button" type="button">查看 Fail 明细</button>
+                <div class="distribution-analysis-actions"><button id="distributionDetailButton" class="secondary-button" type="button">查看 Fail 明细</button></div>
               </div>
               <div class="distribution-insights">
-                <section class="original-statistics">
-                  <div class="insight-heading"><span class="insight-kicker">原始数据</span><strong>测试统计</strong></div>
+                <section class="original-statistics" aria-label="原始测试统计"><h3>数据统计</h3>
                   <div id="distributionStats" class="metric-strip"></div>
+                  <div id="distributionExtraStats" class="extra-metrics"></div>
                 </section>
               <div id="limitSimulationPanel" class="limit-simulator">
                 <div class="limit-simulator-header">
                   <div>
-                    <strong>规格与良率模拟</strong>
+                    <strong>良率模拟</strong>
                     <p id="limitSimulationNote">拖动画布中的 LSL / USL 虚线，或输入精确数值</p>
                   </div>
                   <div class="limit-inputs">
@@ -271,20 +279,34 @@
                   </div>
                 </div>
                 <div id="yieldSimulation" class="yield-simulation"></div>
+                <div class="simulation-details"><div id="simulationExtraStats" class="extra-metrics"></div></div>
               </div>
+
               </div>
+            </article>
+            <section id="distributionCharts" class="distribution-charts" aria-label="图表分析" data-chart-mode="trend">
+              <div id="chartLayoutToolbar" class="chart-layout-toolbar">
+                <div class="chart-layout-switch" role="group" aria-label="图表布局">
+                  <button type="button" data-chart-mode="trend" aria-pressed="true">趋势图</button>
+                  <button type="button" data-chart-mode="histogram" aria-pressed="false">直方图</button>
+                  <button type="button" data-chart-mode="both" aria-pressed="false">双图对比</button>
+                </div>
               <div class="chart-legend" aria-label="图例">
                 <span><i class="legend-dot within"></i>规格内</span>
                 <span><i class="legend-dot out"></i>超限</span>
                 <span><i class="legend-line limit"></i>可拖动规格限</span>
                 <button id="rangeModeButton" class="range-mode-button" type="button">显示全部范围</button>
               </div>
+                <p id="chartLayoutHint" class="chart-layout-hint" aria-live="polite"></p>
+              </div>
+              <div id="distributionPlots" class="distribution-plots">
+            <article id="sequenceChartPanel" class="panel distribution-sequence-section" aria-label="实测值随测试顺序变化">
               <div class="chart-wrap distribution-sequence-chart">
                 <canvas id="failSequenceChart" role="img" aria-label="Fail 项实测值随测试顺序分布图"></canvas>
               </div>
             </article>
 
-            <article class="panel">
+            <article id="histogramChartPanel" class="panel distribution-histogram-panel">
               <div class="panel-header">
                 <div>
                   <h2>数值直方分布</h2>
@@ -295,9 +317,13 @@
                 <canvas id="failHistogramChart" role="img" aria-label="Fail 项实测值直方分布图"></canvas>
               </div>
             </article>
+              </div>
+            </section>
           </div>
         </div>
       </section>
+      <dialog id="chartMaxDialog" class="chart-max-dialog" aria-label="图表最大化查看"></dialog>
+
 
       <section id="stabilityPanel" class="tab-panel" hidden>
         <article class="panel">
@@ -539,7 +565,7 @@
 
   <footer>
     <span>本地离线分析 · 不上传测试数据</span>
-    <span id="versionText">v1.56</span>
+    <span id="versionText">v1.87</span>
   </footer>
 </body>
 </html>

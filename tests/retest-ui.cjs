@@ -23,7 +23,7 @@ const empty='1,2,10,5,-2.9,-2.9,-2.9,-2.9';
     assert.match(await page.locator('.batch-total').textContent(),/末轮空封 0/);
     assert.match(await page.locator('.batch-total').textContent(),/100\.000%/);
     await page.locator('#fileInput').setInputFiles(upload('renamed_FT.csv',[good,empty]));
-    await page.waitForFunction(()=>document.body.innerText.includes('跳过 1 个内容重复文件'));
+    await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('跳过 1 个内容重复文件'));
     assert.equal(await page.locator('#fileTableBody tr').count(),2);
     const download=page.waitForEvent('download');await page.locator('#exportButton').click();
     const report=fs.readFileSync(await(await download).path(),'utf8');
