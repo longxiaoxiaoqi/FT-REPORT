@@ -52,12 +52,12 @@ if(width>1200){
 for(const id of ['distributionExtraStats','simulationExtraStats']){
 const cells=await page.locator('#'+id+' > div').evaluateAll(es=>es.map(e=>Math.round(e.getBoundingClientRect().top)));assert.equal(cells.length,4);assert.equal(new Set(cells).size,1);
 }}
-if(width===1536)await page.screenshot({path:path.resolve(__dirname,'../outputs/inline-simulation-v1.87.png')});
+if(width===1536)await page.screenshot({path:path.resolve(__dirname,'../outputs/inline-simulation-v1.88.png')});
 }
 await page.setViewportSize({width:1536,height:864});await upload('other_FT.csv',csv.replace('Upper Limit,,,,10','Upper Limit,,,,12'));await page.waitForFunction(()=>document.querySelector('#yieldSimulation').textContent.includes('多规格'));
 for(const id of ['simulatedLowerInput','simulatedUpperInput','resetLimitsButton'])assert.equal(await page.locator('#'+id).isDisabled(),true);
 await page.locator('#clearButton').click();await upload('missing_FT.csv',csv.replace('Lower Limit,,,,0','Lower Limit,,,,'));await page.locator('[data-tab="distribution"]').click();assert.equal(await page.locator('#simulatedLowerInput').isDisabled(),true);assert.equal(await page.locator('#simulatedUpperInput').isDisabled(),false);
 await page.locator('#themeToggle').click();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
-await page.locator('[data-tab="release"]').click();assert.equal(await page.locator('#releaseLog .is-current .release-version').innerText(),'v1.87');assert.match(await page.locator('#releaseLog .is-current').innerText(),/删除哪些 Fail 影响了良率标题下/);
+await page.locator('[data-tab="release"]').click();assert.equal(await page.locator('#releaseLog .is-current .release-version').innerText(),'v1.88');assert.match(await page.locator('#releaseLog .is-current').innerText(),/首页导入区标题/);
 assert.deepEqual(errors,[]);console.log('PASS: inline two-panel layout, full statistics/results, input/reset/invalid limits, unchanged original statistics, six viewports, no overflow, multi-spec/missing bounds, clear, theme, visible release log');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1});

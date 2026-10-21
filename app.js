@@ -5,7 +5,11 @@
   const ArchiveEngine = window.FTSevenZip;
   const RELEASE_NOTES = [
     {
-      version: "v1.87", current: true, title: "精简简易模式说明",
+      version: "v1.88", current: true, title: "精简首页导入提示",
+      changes: ["首页导入区标题改为将 FT 数据 CSV、XLSX、压缩包或文件夹拖到这里。"],
+    },
+    {
+      version: "v1.87", current: false, title: "精简简易模式说明",
       changes: ["删除哪些 Fail 影响了良率标题下的排序与计算说明，收起该行空间。"],
     },
     {

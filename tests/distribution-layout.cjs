@@ -218,11 +218,11 @@ const path = require('node:path');
     assert.equal(await page.evaluate(() => window.shellCard === document.querySelector('#summaryCards .summary-card')), true);
     await page.setViewportSize({ width: 1536, height: 1024 });
     await page.locator('[data-tab="release"]').click();
-    assert.equal(await page.locator('#releaseLog .is-current .release-version').innerText(), 'v1.87');
-    assert.match(await page.locator('#releaseLog .is-current').innerText(), /删除哪些 Fail 影响了良率标题下/);
+    assert.equal(await page.locator('#releaseLog .is-current .release-version').innerText(), 'v1.88');
+    assert.match(await page.locator('#releaseLog .is-current').innerText(), /首页导入区标题/);
     assert.match(await page.locator('#releaseLog').innerText(), /清空数据/);
     assert.match(await page.locator('#releaseLog').innerText(), /v1.57/);
-    assert.equal(await page.locator('#versionText').innerText(), 'v1.87');
+    assert.equal(await page.locator('#versionText').innerText(), 'v1.88');
     // All loaded tabs share the analysis shell; clearing restores the import screen.
     await page.locator('[data-tab="overview"]').click();
     assert.equal(await page.locator('#dropZone').isVisible(), false);
@@ -248,6 +248,6 @@ const path = require('node:path');
     assert.equal(await page.locator('#distributionSearch').inputValue(), '');
     assert.equal(await page.locator('#compactImportZone').isVisible(), false);
     assert.deepEqual(errors, []);
-    console.log('PASS: phase-two five KPIs, exact original statistical values/precision, responsive strip; phase-one compact chrome, collapsible 252px sidebar, sorting/selection, target viewports; connected sequence Canvas stroke, reference layout, searchable three-column list, full statistics details, simulation/reset/invalid/drag, all-parameter selection, six viewports, themes, shared header across all seven tabs without reanalysis, compact import click/drop, visible clear action, v1.87 logs, clear restoration and multi-spec boundaries');
+    console.log('PASS: phase-two five KPIs, exact original statistical values/precision, responsive strip; phase-one compact chrome, collapsible 252px sidebar, sorting/selection, target viewports; connected sequence Canvas stroke, reference layout, searchable three-column list, full statistics details, simulation/reset/invalid/drag, all-parameter selection, six viewports, themes, shared header across all seven tabs without reanalysis, compact import click/drop, visible clear action, v1.88 logs, clear restoration and multi-spec boundaries');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

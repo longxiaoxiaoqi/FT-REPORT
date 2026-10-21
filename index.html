@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>FT 数据分析工作台</title>
-  <link rel="stylesheet" href="styles.css?v=1.87.0">
+  <link rel="stylesheet" href="styles.css?v=1.88.0">
   <script src="ft-core.js?v=1.57.0" defer></script>
   <script src="sevenzip-loader.js?v=1.21.0" defer></script>
-  <script src="app.js?v=1.87.0" defer></script>
+  <script src="app.js?v=1.88.0" defer></script>
 </head>
 <body>
   <header class="app-header">
@@ -34,7 +34,7 @@
       <input id="fileInput" type="file" accept=".csv,.xlsx,.zip,.7z,.rar,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-7z-compressed,application/vnd.rar,application/x-rar-compressed" multiple hidden>
       <div class="drop-icon" aria-hidden="true">DATA</div>
       <div>
-        <h2>将测试 CSV、Loop XLSX、工厂良率 XLSX、压缩包或文件夹拖到这里</h2>
+        <h2>将 FT 数据 CSV、XLSX、压缩包或文件夹拖到这里</h2>
         <p>拖入文件夹时会递归读取子目录中的支持文件</p>
       </div>
       <button id="browseButton" class="primary-button" type="button">选择 CSV / XLSX / 压缩包</button>
@@ -565,7 +565,7 @@
 
   <footer>
     <span>本地离线分析 · 不上传测试数据</span>
-    <span id="versionText">v1.87</span>
+    <span id="versionText">v1.88</span>
   </footer>
 </body>
 </html>

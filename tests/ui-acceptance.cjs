@@ -82,7 +82,7 @@ const targets = process.env.FT_RESOLUTION_MATRIX ? [
      await page.locator('#failReasonFilter').selectOption('all');
     }
     if(tab==='audit')assert.ok((await page.locator('#dataAuditMetrics').innerText()).length>0);
-    if(tab==='release')assert.equal(await page.locator('#releaseLog .is-current .release-version').innerText(),'v1.87');
+    if(tab==='release')assert.equal(await page.locator('#releaseLog .is-current .release-version').innerText(),'v1.88');
     if(process.env.FT_RESOLUTION_MATRIX){
      await page.screenshot({path:path.resolve(__dirname,`../outputs/matrix-${label}-${tab}.png`)});
      await page.locator('#themeToggle').click();await settle();await chrome();

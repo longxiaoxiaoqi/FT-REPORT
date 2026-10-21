@@ -2,13 +2,13 @@
 
 面向半导体 Final Test 数据的本地离线分析工具。支持批量导入测试明细，查看测试事件良率、Fail 归因、参数稳定性和复测链统计，并通过调整规格试算良率变化。
 
-**当前版本：v1.87** · [下载离线包](https://github.com/longxiaoxiaoqi/FT-REPORT/releases/latest) · [更新说明](CHANGELOG.md)
+**当前版本：v1.88** · [下载离线包](https://github.com/longxiaoxiaoqi/FT-REPORT/releases/latest) · [更新说明](CHANGELOG.md)
 
 数据在本机浏览器内存中处理，无需上传测试文件，无需安装 Node.js、Python 或联网服务。建议使用新版 Microsoft Edge 或 Chrome。
 
 ## 快速开始
 
-1. 下载 Release 中的 `FT-REPORT-v1.87.zip` 并完整解压。
+1. 下载 Release 中的 `FT-REPORT-v1.88.zip` 并完整解压。
 2. 双击 `启动FT分析工具.bat`，或直接打开 `index.html`。
 3. 拖入 CSV、XLSX、ZIP、7z、RAR 或文件夹；支持继续添加文件和文件内容去重。
 4. 选择分析范围，在简易模式查看重点指标，或切换专业模式查看完整分析。
@@ -31,6 +31,10 @@
 - 默认趋势图，窄区域双图自动回退到单图；页面滚动不再改变图表高度。
 - 规格模拟保留其他 Fail 原因，原规格模拟回到实际测试事件良率；多规格冲突时禁用模拟。
 - 导出保留核心指标、Fail 汇总、参数稳定性及适用的批次统计；**不导出逐条 Fail 明细**。明细可在页面内查看。
+
+## v1.88 更新
+
+- 首页导入标题简化为：将 FT 数据 CSV、XLSX、压缩包或文件夹拖到这里。
 
 ## v1.87 更新摘要（相对 v1.56）
 
